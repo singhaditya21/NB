@@ -50,15 +50,9 @@ async function startup() {
         memory.initializeAllFiles();
         logger.info('✓ Memory initialized');
 
-        // c. Validate models
-        const modelStatus = await validateModels(genAI);
-        if (!modelStatus.allHealthy) {
-            const issues = modelStatus.issues.map(i => `${i.model}: ${i.error} → fallback: ${i.fallback}`).join('; ');
-            await sendMessage(`⚠️ *Model Issues*\n${issues}`).catch(() => { });
-            logger.warn(`Model issues: ${issues}`);
-        } else {
-            logger.info('✓ All models healthy');
-        }
+        // c. Models — all routed to gemini-2.0-flash (free tier)
+        // Skipping validation to avoid burning free tier RPM at startup
+        logger.info('✓ Models: all routed to gemini-2.0-flash (free tier, $0/month)');
 
         // d. Budget check
         budgetGuardian.checkIfShouldResume();
