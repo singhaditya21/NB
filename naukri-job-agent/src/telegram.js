@@ -184,10 +184,47 @@ Paused: ${budget.paused ? `Yes (until ${budget.pausedUntil})` : 'No'}`;
         logger.info(`Blocklisted: ${company}`);
     });
 
+    bot.command('battlecard', async (ctx) => {
+        if (String(ctx.from.id) !== CHAT_ID) return;
+        const input = ctx.message.text.replace('/battlecard', '').trim();
+        if (!input) {
+            await ctx.reply('Usage: /battlecard CompanyName');
+            return;
+        }
+        await ctx.reply(`Generating battle card for "${input}"...`);
+        try {
+            const { generateBattleCard } = require('./interview-prep');
+            // Try to find a matching applied job for more context
+            const allApplied = memory.getAppliedJobs();
+            const match = allApplied.find(j =>
+                j.company && j.company.toLowerCase().includes(input.toLowerCase())
+            );
+            const jobTitle = match ? match.title : '';
+            const jdText = match ? (match.jdSummary || '') : '';
+            const card = await generateBattleCard(input, jobTitle, jdText);
+            if (card) {
+                // Split long messages (Telegram limit is 4096 chars)
+                if (card.length > 4000) {
+                    const chunks = card.match(/.{1,4000}/gs) || [card];
+                    for (const chunk of chunks) {
+                        await sendMessage(chunk);
+                    }
+                } else {
+                    await sendMessage(card);
+                }
+            } else {
+                await ctx.reply('Failed to generate battle card. Try again later.');
+            }
+        } catch (err) {
+            logger.error(`Battle card command error: ${err.message}`);
+            await ctx.reply('Error generating battle card.');
+        }
+    });
+
     bot.command('stop', async (ctx) => {
         if (String(ctx.from.id) !== CHAT_ID) return;
         if (_orchestrator) _orchestrator.setEmergencyStop();
-        await ctx.reply('🛑 Emergency stop activated. Restart container to resume.');
+        await ctx.reply('Emergency stop activated. Restart container to resume.');
         logger.warn('Emergency stop via /stop');
     });
 

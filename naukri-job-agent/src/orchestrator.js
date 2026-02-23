@@ -5,6 +5,8 @@ const { callGemini, budgetGuardian, randomDelay } = require('./gemini');
 const { sendMessage, sendAlert, hourlyReport } = require('./telegram');
 const naukriAgent = require('./naukri-agent');
 const jdAnalyzer = require('./jd-analyzer');
+const { generateCoverLetter } = require('./cover-letter');
+const { extractContactInfo, formatContactForTelegram } = require('./outreach-extractor');
 
 // ─── Module-level state ───
 let isPaused = false;
@@ -97,7 +99,8 @@ async function runNaukriCycle() {
 
                 const score = keywordScreen(
                     `${job.title} ${job.company} ${job.salary || ''} ${job.jdSnippet || ''}`,
-                    profile
+                    profile,
+                    job
                 );
 
                 if (score.quickScore < 45) {
@@ -130,6 +133,27 @@ async function runNaukriCycle() {
                             cycleApplied++;
                             logSuccessfulApply(job, score);
                             queueJDForFeedback(job);
+
+                            // ─── Premium pipeline for high-score jobs ───
+                            if (score.quickScore >= 70) {
+                                try {
+                                    const jdText = job.jdSnippet || `${job.title} at ${job.company}`;
+
+                                    // Cover letter
+                                    const letter = await generateCoverLetter(jdText, job, profile);
+                                    if (letter) {
+                                        await sendMessage(`-- COVER LETTER --\n${job.title} at ${job.company}\nScore: ${score.quickScore}\n\n${letter}`).catch(() => { });
+                                    }
+
+                                    // Contact extraction
+                                    const contact = await extractContactInfo(jdText, job);
+                                    if (contact) {
+                                        await sendMessage(formatContactForTelegram(contact)).catch(() => { });
+                                    }
+                                } catch (premErr) {
+                                    logger.warn(`Premium pipeline error: ${premErr.message}`);
+                                }
+                            }
                         }
                     } catch (applyErr) {
                         logger.warn(`Apply failed: ${job.title} — ${applyErr.message}`);

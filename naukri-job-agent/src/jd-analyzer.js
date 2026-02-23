@@ -6,14 +6,16 @@ const { logger } = require('./logger');
  * 0. keywordFallbackScreen — No-AI fallback when Gemini is rate-limited
  *    Uses keyword matching to give a basic score
  */
-function keywordFallbackScreen(jdText, profile) {
+function keywordFallbackScreen(jdText, profile, job = null) {
     const text = (jdText || '').toLowerCase();
     let score = 40; // Base score
 
-    // Positive role keywords
+    // Positive role keywords (including AI ones)
     const roleKeywords = ['operations', 'director', 'head of', 'vp ', 'vice president', 'general manager',
         'chief', 'leader', 'strategy', 'transformation', 'program management', 'business operations',
-        'senior manager', 'associate director', 'global', 'enterprise'];
+        'senior manager', 'associate director', 'global', 'enterprise',
+        'artificial intelligence', 'ai', 'machine learning', 'llm', 'generative ai'];
+
     for (const kw of roleKeywords) if (text.includes(kw)) score += 5;
 
     // Skill keywords from profile
@@ -33,6 +35,16 @@ function keywordFallbackScreen(jdText, profile) {
     // Negative signals
     const negatives = ['intern', 'fresher', 'entry level', '0-2 years', '1-3 years', '2-4 years', 'junior'];
     for (const neg of negatives) if (text.includes(neg)) score -= 15;
+
+    // Freshness Override (1 Day)
+    if (job && job.postedDate) {
+        const pd = job.postedDate.toLowerCase();
+        if (pd.includes('just now') || pd.includes('few hours ago') ||
+            pd.includes('today') || pd.includes('1 day ago') || pd.includes('1 day')) {
+            logger.info(`🔥 Freshness Boost: Job posted ${job.postedDate} - forcing high score`);
+            score += 100; // Guarantee apply
+        }
+    }
 
     score = Math.max(0, Math.min(100, score));
     const worthAnalyzing = score >= 50;

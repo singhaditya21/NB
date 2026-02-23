@@ -36,10 +36,10 @@ const MODEL_REGISTRY = {
     },
 
     dailyCallLimits: {
-        FREE: 500,
-        CHEAP: 400,
-        BALANCED: 100,
-        TOTAL: 900,
+        FREE: 2000,
+        CHEAP: 2000,
+        BALANCED: 1000,
+        TOTAL: 5000,
     },
 };
 
