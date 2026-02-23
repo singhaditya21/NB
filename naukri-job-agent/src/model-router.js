@@ -2,44 +2,44 @@
 const { logger } = require('./logger');
 
 const MODEL_REGISTRY = {
+    // ─── ALL models route to gemini-2.0-flash (FREE TIER ONLY) ───
+    // Free tier: 15 RPM, 1,500 RPD, 1M TPM — $0.00/month
     models: {
         FREE: 'gemini-2.0-flash',
-        CHEAP: 'gemini-2.0-flash',  // Flash-Lite unavailable; using Flash (free tier)
-        BALANCED: 'gemini-2.5-flash',
+        CHEAP: 'gemini-2.0-flash',
+        BALANCED: 'gemini-2.0-flash',  // Was gemini-2.5-flash — changed to stay free
     },
 
     taskRouting: {
-        // Free tier — always try here first
-        company_research: { model: 'FREE', mode: 'realtime', reason: 'free + Google Search' },
-
-        // Flash-Lite — high volume, quality not critical
-        jd_screening: { model: 'CHEAP', mode: 'batch', reason: 'bulk screening' },
-        keyword_extraction: { model: 'CHEAP', mode: 'batch', reason: 'structured extraction' },
-        hourly_insight: { model: 'CHEAP', mode: 'batch', reason: 'short summary' },
-        report_generation: { model: 'CHEAP', mode: 'batch', reason: 'formatted output' },
-        follow_up_draft: { model: 'CHEAP', mode: 'batch', reason: 'templated message' },
-        dedup_check: { model: 'CHEAP', mode: 'batch', reason: 'simple comparison' },
-
-        // Flash — when output quality represents the candidate
-        jd_analysis_full: { model: 'BALANCED', mode: 'batch', reason: 'nuanced match scoring' },
-        recruiter_message: { model: 'BALANCED', mode: 'batch', reason: 'professional writing' },
-        resume_tailor: { model: 'BALANCED', mode: 'batch', reason: 'writing quality matters' },
-        interview_prep: { model: 'BALANCED', mode: 'realtime', reason: 'high stakes, use sparingly' },
-        offer_analysis: { model: 'BALANCED', mode: 'realtime', reason: 'high stakes, use sparingly' },
+        // All tasks use gemini-2.0-flash via their tier routing
+        company_research: { model: 'FREE', mode: 'batch', reason: 'free tier' },
+        jd_screening: { model: 'FREE', mode: 'batch', reason: 'free tier' },
+        keyword_extraction: { model: 'FREE', mode: 'batch', reason: 'free tier' },
+        hourly_insight: { model: 'FREE', mode: 'batch', reason: 'free tier' },
+        report_generation: { model: 'FREE', mode: 'batch', reason: 'free tier' },
+        follow_up_draft: { model: 'FREE', mode: 'batch', reason: 'free tier' },
+        dedup_check: { model: 'FREE', mode: 'batch', reason: 'free tier' },
+        jd_analysis_full: { model: 'FREE', mode: 'batch', reason: 'free tier' },
+        recruiter_message: { model: 'FREE', mode: 'batch', reason: 'free tier' },
+        resume_tailor: { model: 'FREE', mode: 'batch', reason: 'free tier' },
+        interview_prep: { model: 'FREE', mode: 'batch', reason: 'free tier' },
+        offer_analysis: { model: 'FREE', mode: 'batch', reason: 'free tier' },
     },
 
     costs: {
-        // per 1M tokens
+        // All $0 — free tier only
         FREE: { input_batch: 0.0, output_batch: 0.0, has_free_tier: true },
-        CHEAP: { input_batch: 0.075, output_batch: 0.30, has_free_tier: false },
-        BALANCED: { input_batch: 0.15, output_batch: 0.60, has_free_tier: false },
+        CHEAP: { input_batch: 0.0, output_batch: 0.0, has_free_tier: true },
+        BALANCED: { input_batch: 0.0, output_batch: 0.0, has_free_tier: true },
     },
 
+    // Free tier hard limits: 15 RPM, 1,500 RPD
+    // We cap at 1,400 to leave buffer
     dailyCallLimits: {
-        FREE: 2000,
-        CHEAP: 2000,
-        BALANCED: 1000,
-        TOTAL: 5000,
+        FREE: 1400,
+        CHEAP: 1400,
+        BALANCED: 1400,
+        TOTAL: 1400,
     },
 };
 

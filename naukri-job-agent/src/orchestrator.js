@@ -178,26 +178,39 @@ async function runNaukriCycle() {
         try {
             logger.info('Refreshing profile (resume + headline)...');
             const refreshResult = await naukriAgent.refreshProfileTimestamp(page);
-
-            // Send Telegram profile update notification
-            const parts = [];
-            parts.push('-- Profile Updated --');
-            if (refreshResult.resumeUploaded) parts.push('Resume: Uploaded');
-            else parts.push('Resume: Skipped');
-            if (refreshResult.headlineUpdated) parts.push('Headline: Saved');
-            else parts.push('Headline: Skipped');
-            parts.push('Time: ' + (refreshResult.time || new Date().toLocaleTimeString('en-IN')));
-            parts.push('Applied this cycle: ' + cycleApplied);
-
-            try {
-                await sendMessage(parts.join('\n'));
-                logger.info('Telegram profile notification sent');
-            } catch (tgErr) {
-                logger.warn('Telegram profile notification failed: ' + tgErr.message);
-            }
+            const ts = refreshResult.time || new Date().toLocaleTimeString('en-IN');
+            logger.info(`Profile refresh: resume=${refreshResult.resumeUploaded} headline=${refreshResult.headlineUpdated} at ${ts}`);
         } catch (refreshErr) {
             logger.warn(`Profile refresh failed: ${refreshErr.message}`);
-            await sendAlert('⚠️ Profile Refresh Failed', refreshErr.message).catch(() => { });
+        }
+
+        // ─── Smart Telegram: only send when something changed ───
+        if (cycleApplied > 0) {
+            try {
+                const allApplied = memory.getAppliedJobs();
+                const today = new Date().toISOString().slice(0, 10);
+                const todayTotal = allApplied.filter(j => j.appliedAt && j.appliedAt.startsWith(today)).length;
+                const recentJobs = allApplied
+                    .filter(j => j.appliedAt && j.appliedAt.startsWith(today))
+                    .slice(-cycleApplied)
+                    .map(j => `- ${j.title} at ${j.company}`)
+                    .join('\n');
+
+                const msg = `-- ${cycleApplied} New Application${cycleApplied > 1 ? 's' : ''} --\n${recentJobs}\nTotal today: ${todayTotal}`;
+                await sendMessage(msg).catch(() => { });
+            } catch { }
+        }
+
+        // ─── Profile Self-Learning (once per day) ───
+        try {
+            const { learnFromAppliedJobs, formatLearningForTelegram } = require('./profile-learner');
+            const learning = await learnFromAppliedJobs();
+            if (learning.learned) {
+                const msg = formatLearningForTelegram(learning);
+                if (msg) await sendMessage(msg).catch(() => { });
+            }
+        } catch (learnErr) {
+            logger.debug(`Profile learning skipped: ${learnErr.message}`);
         }
     } catch (err) {
         logger.error(`Naukri cycle error: ${err.message}`);

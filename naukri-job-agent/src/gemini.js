@@ -205,8 +205,70 @@ function randomDelay(min, max) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// ─── Free Tier Rate Limiter ───
+// Gemini 2.0 Flash free tier: 15 RPM, 1,500 RPD, 1M TPM
+// We enforce: 4.5s minimum between calls (≤13 RPM) + 1,400 RPD cap
+class FreeRateLimiter {
+    constructor() {
+        this._lastCallTime = 0;
+        this._callsToday = 0;
+        this._currentDay = new Date().toISOString().slice(0, 10);
+        this.MIN_INTERVAL_MS = 4500; // 4.5s between calls = max ~13 RPM
+        this.MAX_DAILY_CALLS = 1400;
+    }
+
+    _resetIfNewDay() {
+        const today = new Date().toISOString().slice(0, 10);
+        if (today !== this._currentDay) {
+            this._currentDay = today;
+            this._callsToday = 0;
+        }
+    }
+
+    canCall() {
+        this._resetIfNewDay();
+        if (this._callsToday >= this.MAX_DAILY_CALLS) {
+            return { allowed: false, reason: `Daily call limit reached (${this._callsToday}/${this.MAX_DAILY_CALLS})` };
+        }
+        return { allowed: true };
+    }
+
+    async waitForSlot() {
+        const check = this.canCall();
+        if (!check.allowed) {
+            logger.warn(`Rate limiter: ${check.reason}`);
+            return false;
+        }
+
+        const now = Date.now();
+        const elapsed = now - this._lastCallTime;
+        if (elapsed < this.MIN_INTERVAL_MS) {
+            const waitMs = this.MIN_INTERVAL_MS - elapsed;
+            await new Promise(r => setTimeout(r, waitMs));
+        }
+
+        this._lastCallTime = Date.now();
+        this._callsToday++;
+        return true;
+    }
+
+    getStats() {
+        this._resetIfNewDay();
+        return { callsToday: this._callsToday, maxDaily: this.MAX_DAILY_CALLS, remaining: this.MAX_DAILY_CALLS - this._callsToday };
+    }
+}
+
+const rateLimiter = new FreeRateLimiter();
+
 // ─── callGemini ───
 async function callGemini(prompt, taskType, options = {}) {
+    // Rate limit check — wait for a free slot
+    const slotAvailable = await rateLimiter.waitForSlot();
+    if (!slotAvailable) {
+        logger.warn(`Gemini call skipped (rate limited): task=${taskType}`);
+        return null;
+    }
+
     const routing = getModel(taskType);
     const { modelId, mode, costTier } = routing;
 
@@ -336,5 +398,6 @@ module.exports = {
     callGemini,
     batchCallGemini,
     budgetGuardian,
+    rateLimiter,
     randomDelay,
 };
