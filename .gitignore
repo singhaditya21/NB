@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Environment
+.env
+.env.local
+
+# Memory/state files (contain sensitive data)
+memory/*.json
+memory/*.png
+memory/*.log
+
+# Debug screenshots
+debug-apply-*.png
+
+# Temp files
+patch-telegram.js
+create-startup-shortcut.ps1
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log

@@ -1,0 +1,205 @@
+// src/model-router.js — Single source of truth for all Gemini model names
+const { logger } = require('./logger');
+
+const MODEL_REGISTRY = {
+    models: {
+        FREE: 'gemini-2.0-flash',
+        CHEAP: 'gemini-2.0-flash',  // Flash-Lite unavailable; using Flash (free tier)
+        BALANCED: 'gemini-2.5-flash',
+    },
+
+    taskRouting: {
+        // Free tier — always try here first
+        company_research: { model: 'FREE', mode: 'realtime', reason: 'free + Google Search' },
+
+        // Flash-Lite — high volume, quality not critical
+        jd_screening: { model: 'CHEAP', mode: 'batch', reason: 'bulk screening' },
+        keyword_extraction: { model: 'CHEAP', mode: 'batch', reason: 'structured extraction' },
+        hourly_insight: { model: 'CHEAP', mode: 'batch', reason: 'short summary' },
+        report_generation: { model: 'CHEAP', mode: 'batch', reason: 'formatted output' },
+        follow_up_draft: { model: 'CHEAP', mode: 'batch', reason: 'templated message' },
+        dedup_check: { model: 'CHEAP', mode: 'batch', reason: 'simple comparison' },
+
+        // Flash — when output quality represents the candidate
+        jd_analysis_full: { model: 'BALANCED', mode: 'batch', reason: 'nuanced match scoring' },
+        recruiter_message: { model: 'BALANCED', mode: 'batch', reason: 'professional writing' },
+        resume_tailor: { model: 'BALANCED', mode: 'batch', reason: 'writing quality matters' },
+        interview_prep: { model: 'BALANCED', mode: 'realtime', reason: 'high stakes, use sparingly' },
+        offer_analysis: { model: 'BALANCED', mode: 'realtime', reason: 'high stakes, use sparingly' },
+    },
+
+    costs: {
+        // per 1M tokens
+        FREE: { input_batch: 0.0, output_batch: 0.0, has_free_tier: true },
+        CHEAP: { input_batch: 0.075, output_batch: 0.30, has_free_tier: false },
+        BALANCED: { input_batch: 0.15, output_batch: 0.60, has_free_tier: false },
+    },
+
+    dailyCallLimits: {
+        FREE: 500,
+        CHEAP: 400,
+        BALANCED: 100,
+        TOTAL: 900,
+    },
+};
+
+// Budget override flag — set by BudgetGuardian when monthly cost >= $4
+let _forceCheap = false;
+
+function setForceCheap(val) {
+    _forceCheap = val;
+}
+
+/**
+ * 1. getModel(taskType) → { modelId, mode, reason, costTier }
+ */
+function getModel(taskType) {
+    const routing = MODEL_REGISTRY.taskRouting[taskType];
+
+    if (!routing) {
+        logger.warn(`Unknown task type "${taskType}" — defaulting to CHEAP batch`);
+        return {
+            modelId: MODEL_REGISTRY.models.CHEAP,
+            mode: 'batch',
+            reason: `unknown task type "${taskType}" — default CHEAP`,
+            costTier: 'CHEAP',
+        };
+    }
+
+    let costTier = routing.model;
+    if (_forceCheap && costTier !== 'FREE') {
+        costTier = 'CHEAP';
+    }
+
+    const result = {
+        modelId: MODEL_REGISTRY.models[costTier],
+        mode: routing.mode,
+        reason: routing.reason,
+        costTier,
+    };
+
+    logger.debug(`Model routed: task=${taskType} model=${result.modelId} tier=${costTier} reason=${result.reason}`);
+    return result;
+}
+
+/**
+ * 2. estimateDailyCost() — reads budget-log.json (via callback)
+ */
+function estimateDailyCost(budgetLog) {
+    if (!budgetLog) return { todayUSD: 0, monthUSD: 0, projectedMonthUSD: 0, safeToday: true };
+
+    const today = new Date();
+    const dayOfMonth = today.getDate();
+    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    const dailyRate = budgetLog.estimatedCostMonth / Math.max(dayOfMonth, 1);
+    const projected = dailyRate * daysInMonth;
+
+    return {
+        todayUSD: budgetLog.estimatedCostToday || 0,
+        monthUSD: budgetLog.estimatedCostMonth || 0,
+        projectedMonthUSD: Math.round(projected * 100) / 100,
+        safeToday: (budgetLog.estimatedCostToday || 0) < 0.16,
+    };
+}
+
+/**
+ * 3. validateModels() — minimal test call to each model
+ *    Uses delays between calls to respect free-tier rate limits
+ */
+async function validateModels(geminiClient) {
+    const issues = [];
+    // Deduplicate — if CHEAP and FREE use the same model ID, only test once
+    const tested = new Set();
+    const modelKeys = Object.keys(MODEL_REGISTRY.models);
+
+    for (const key of modelKeys) {
+        const modelId = MODEL_REGISTRY.models[key];
+        if (tested.has(modelId)) {
+            logger.info(`Model ${key} (${modelId}): same as previous — skipping duplicate test`);
+            continue;
+        }
+        tested.add(modelId);
+
+        // Wait 3s between calls to respect free-tier rate limits (15 RPM)
+        if (tested.size > 1) {
+            await new Promise(r => setTimeout(r, 3000));
+        }
+
+        try {
+            const model = geminiClient.getGenerativeModel({ model: modelId });
+            const result = await model.generateContent('Say "ok" in one word.');
+            const text = result.response.text();
+            if (!text) throw new Error('Empty response');
+            logger.info(`Model ${key} (${modelId}): healthy`);
+        } catch (err) {
+            // On rate limit (429), retry once after waiting
+            if (err.status === 429 || (err.message && err.message.includes('429'))) {
+                logger.info(`Model ${key}: rate limited, waiting 10s then retrying...`);
+                await new Promise(r => setTimeout(r, 10000));
+                try {
+                    const model = geminiClient.getGenerativeModel({ model: modelId });
+                    const result = await model.generateContent('Say "ok" in one word.');
+                    const text = result.response.text();
+                    if (!text) throw new Error('Empty response');
+                    logger.info(`Model ${key} (${modelId}): healthy (after retry)`);
+                    continue;
+                } catch (retryErr) {
+                    // Fall through to log issue
+                    err = retryErr;
+                }
+            }
+
+            const fallbackKey = getFallback(key);
+            issues.push({
+                model: key,
+                modelId,
+                error: err.message,
+                fallback: fallbackKey,
+            });
+            logger.warn(`Model ${key} (${modelId}) failed: ${err.message}. Fallback: ${fallbackKey}`);
+        }
+    }
+
+    return {
+        allHealthy: issues.length === 0,
+        issues,
+    };
+}
+
+/**
+ * 4. getFallback(modelKey)  FREE → BALANCED → CHEAP (CHEAP never fails)
+ */
+function getFallback(modelKey) {
+    const chain = { FREE: 'BALANCED', BALANCED: 'CHEAP', CHEAP: 'CHEAP' };
+    return chain[modelKey] || 'CHEAP';
+}
+
+/**
+ * 5. getModelStats() — per-model usage and cost breakdown
+ */
+function getModelStats(budgetLog) {
+    if (!budgetLog) {
+        return {
+            models: {},
+            totalToday: 0,
+            totalMonth: 0,
+        };
+    }
+
+    return {
+        models: budgetLog.callsByModel || {},
+        totalToday: budgetLog.estimatedCostToday || 0,
+        totalMonth: budgetLog.estimatedCostMonth || 0,
+        totalCallsToday: budgetLog.totalCallsToday || 0,
+    };
+}
+
+module.exports = {
+    MODEL_REGISTRY,
+    getModel,
+    estimateDailyCost,
+    validateModels,
+    getFallback,
+    getModelStats,
+    setForceCheap,
+};
