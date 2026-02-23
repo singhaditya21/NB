@@ -111,17 +111,25 @@ function startDashboard() {
                 .slice(0, 5)
                 .map(([name, count]) => ({ name, count }));
 
-            // Gemini budget — try rate limiter counter first, then budget-log
+            // Gemini budget — read rate limiter + budget guardian status
             let geminiUsed = 0;
+            let geminiExhausted = false;
             try {
                 const gemMod = require('./gemini');
-                if (gemMod.rateLimiter && gemMod.rateLimiter.todayCalls !== undefined) {
-                    geminiUsed = gemMod.rateLimiter.todayCalls;
+                if (gemMod.rateLimiter) {
+                    const rlStats = gemMod.rateLimiter.getStats();
+                    geminiUsed = rlStats.callsToday || 0;
+                    if (rlStats.quotaExhausted) geminiExhausted = true;
+                }
+                if (gemMod.budgetGuardian && gemMod.budgetGuardian.isBudgetPaused()) {
+                    geminiExhausted = true;
                 }
             } catch { /* ignore */ }
+            // Fallback to budget-log.json if rate limiter shows 0
             if (geminiUsed === 0) {
                 const todayLog = budget[new Date().toISOString().slice(0, 10)] || {};
                 geminiUsed = (todayLog.callsByModel?.FREE || 0) + (todayLog.callsByModel?.CHEAP || 0) + (todayLog.callsByModel?.BALANCED || 0);
+                if (todayLog.paused) geminiExhausted = true;
             }
 
             // Learning
@@ -152,6 +160,7 @@ function startDashboard() {
                 topRoles,
                 geminiUsed,
                 geminiLimit: 1400,
+                geminiExhausted,
                 uptime: process.uptime(),
                 profileSkills: (profile.skills || []).length,
                 targetRoles: profile.targetRoles || [],

@@ -796,11 +796,26 @@
       document.getElementById('k2').textContent = s.avgScore > 0 ? s.avgScore + '%' : '—';
       document.getElementById('k3').textContent = s.messagesSent;
       document.getElementById('k4').textContent = s.coverLetters;
-      const p = Math.round((s.geminiUsed / s.geminiLimit) * 100);
-      document.getElementById('k5').textContent = `${s.geminiUsed} / ${s.geminiLimit}`;
-      document.getElementById('k5s').textContent = `${100 - p}% remaining`;
-      const m = document.getElementById('gm'); m.style.width = p + '%';
-      m.style.background = p > 80 ? '#DC2626' : p > 50 ? '#D97706' : '#059669';
+      const gUsed = s.geminiUsed, gLim = s.geminiLimit;
+      const p = Math.round((gUsed / gLim) * 100);
+      const gemEl = document.getElementById('k5');
+      const gemSub = document.getElementById('k5s');
+      const gm = document.getElementById('gm');
+      if (s.geminiExhausted) {
+        gemEl.textContent = 'EXHAUSTED';
+        gemEl.style.fontSize = '20px';
+        gemEl.style.color = '#DC2626';
+        gemSub.textContent = `${gUsed} calls made \u2014 quota exceeded`;
+        gm.style.width = '100%';
+        gm.style.background = '#DC2626';
+      } else {
+        gemEl.textContent = `${gUsed} / ${gLim}`;
+        gemEl.style.fontSize = '24px';
+        gemEl.style.color = '#1E293B';
+        gemSub.textContent = `${100 - p}% remaining`;
+        gm.style.width = p + '%';
+        gm.style.background = p > 80 ? '#DC2626' : p > 50 ? '#D97706' : '#059669';
+      }
       document.getElementById('role-tags').innerHTML = (s.targetRoles || []).slice(0, 5).map(r => `<span class="tag">${r}</span>`).join('');
     }
 

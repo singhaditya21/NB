@@ -213,6 +213,7 @@ class FreeRateLimiter {
         this._lastCallTime = 0;
         this._callsToday = 0;
         this._currentDay = new Date().toISOString().slice(0, 10);
+        this._externalQuotaHit = false;  // Set when Google returns 429
         this.MIN_INTERVAL_MS = 4500; // 4.5s between calls = max ~13 RPM
         this.MAX_DAILY_CALLS = 1400;
     }
@@ -222,11 +223,19 @@ class FreeRateLimiter {
         if (today !== this._currentDay) {
             this._currentDay = today;
             this._callsToday = 0;
+            this._externalQuotaHit = false;
         }
+    }
+
+    markQuotaExhausted() {
+        this._externalQuotaHit = true;
     }
 
     canCall() {
         this._resetIfNewDay();
+        if (this._externalQuotaHit) {
+            return { allowed: false, reason: `Google API quota exhausted (429)` };
+        }
         if (this._callsToday >= this.MAX_DAILY_CALLS) {
             return { allowed: false, reason: `Daily call limit reached (${this._callsToday}/${this.MAX_DAILY_CALLS})` };
         }
@@ -254,7 +263,12 @@ class FreeRateLimiter {
 
     getStats() {
         this._resetIfNewDay();
-        return { callsToday: this._callsToday, maxDaily: this.MAX_DAILY_CALLS, remaining: this.MAX_DAILY_CALLS - this._callsToday };
+        return {
+            callsToday: this._callsToday,
+            maxDaily: this.MAX_DAILY_CALLS,
+            remaining: this.MAX_DAILY_CALLS - this._callsToday,
+            quotaExhausted: this._externalQuotaHit,
+        };
     }
 }
 
@@ -359,6 +373,11 @@ async function callGemini(prompt, taskType, options = {}) {
             }
 
             logger.error(`Gemini call failed: task=${taskType} error=${err.message}`);
+            // If we exhausted retries on a 429, mark quota as done for today
+            if (isRateLimit && attempt === retries) {
+                rateLimiter.markQuotaExhausted();
+                logger.warn('Google API quota marked EXHAUSTED for today — no more Gemini calls until midnight reset');
+            }
             return null;
         }
     }
