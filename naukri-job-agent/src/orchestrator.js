@@ -154,6 +154,19 @@ async function runNaukriCycle() {
                                     logger.warn(`Premium pipeline error: ${premErr.message}`);
                                 }
                             }
+
+                            // ─── Auto Recruiter Outreach (all applied jobs) ───
+                            try {
+                                const pitch = `Hi, I'm ${profile.name} with ${profile.totalExperience} experience in global operations, delivery, and AI-driven transformation. I just applied for the ${job.title} role and believe my background in scaling enterprise operations (impacting 1500+ users across US and intl markets) aligns well. Would love to connect.`;
+                                const msgResult = await naukriAgent.sendRecruiterMessage(page, '', pitch);
+                                if (msgResult.success) {
+                                    logger.info(`Recruiter message sent for ${job.title} at ${job.company}`);
+                                    await sendMessage(`-- Recruiter Messaged --\n${job.title} at ${job.company}`).catch(() => { });
+                                    memory.updateHourlyStats({ messagesToday: 1 });
+                                }
+                            } catch (msgErr) {
+                                logger.debug(`Recruiter message skipped: ${msgErr.message}`);
+                            }
                         }
                     } catch (applyErr) {
                         logger.warn(`Apply failed: ${job.title} — ${applyErr.message}`);

@@ -4,11 +4,11 @@ const cron = require('node-cron');
 const config = require('./config');
 const { logger } = require('./logger');
 const memory = require('./memory');
-const { validateModels } = require('./model-router');
 const { genAI, budgetGuardian } = require('./gemini');
 const { startBot, sendMessage, setOrchestrator } = require('./telegram');
 const orchestrator = require('./orchestrator');
 const { detectUpcomingInterviews, generateAndSendBrief } = require('./interview-prep');
+const { startDashboard } = require('./dashboard');
 
 const app = express();
 const startTime = Date.now();
@@ -63,10 +63,12 @@ async function startup() {
         await startBot();
         logger.info('✓ Telegram bot started');
 
-        // f. Start Express
+        // f. Start Express + Dashboard
         app.listen(config.port, () => {
             logger.info(`✓ Express listening on port ${config.port}`);
         });
+        startDashboard();
+        logger.info('✓ Dashboard live at http://localhost:4001');
 
         // g. Start cron jobs
         setupCronJobs();
