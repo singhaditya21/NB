@@ -1,5 +1,6 @@
-// src/logger.js — Winston structured logging with daily rotation + event emitter for dashboard
+// src/logger.js — Winston structured logging with daily rotation + real-time dashboard streaming
 const winston = require('winston');
+const Transport = require('winston-transport');
 const DailyRotateFile = require('winston-daily-rotate-file');
 const path = require('path');
 const EventEmitter = require('events');
@@ -8,6 +9,20 @@ const LOG_DIR = path.resolve(process.env.MEMORY_PATH || '.', '..', 'logs');
 
 // EventEmitter to broadcast logs to dashboard WebSocket
 const logEmitter = new EventEmitter();
+
+// Custom transport that emits every log entry to the dashboard
+class DashboardTransport extends Transport {
+    log(info, callback) {
+        setImmediate(() => {
+            logEmitter.emit('log', {
+                level: (info.level || 'info').replace(/\u001b\[[\d;]*m/g, ''),
+                message: (info.message || '').replace(/\u001b\[[\d;]*m/g, ''),
+                timestamp: info.timestamp || new Date().toISOString(),
+            });
+        });
+        callback();
+    }
+}
 
 const logger = winston.createLogger({
     level: 'info',
@@ -36,17 +51,9 @@ const logger = winston.createLogger({
                 winston.format.json()
             ),
         }),
+        // Dashboard — real-time WebSocket streaming
+        new DashboardTransport(),
     ],
 });
 
-// Tap into Winston's stream to emit events for the dashboard
-logger.on('data', (info) => {
-    logEmitter.emit('log', {
-        level: info.level ? info.level.replace(/\u001b\[\d+m/g, '') : 'info', // strip ANSI colors
-        message: info.message || '',
-        timestamp: info.timestamp || new Date().toISOString(),
-    });
-});
-
 module.exports = { logger, logEmitter };
-

@@ -595,6 +595,7 @@
     </div>
     <div class="hdr-right">
       <span style="font-size:12px;color:#94A3B8;" id="uptime-txt">Uptime: —</span>
+      <span style="font-size:12px;color:#16A34A;font-weight:600;" id="last-act"></span>
       <div class="date-pills">
         <button class="dp on" data-r="today">Today</button>
         <button class="dp" data-r="week">Week</button>
@@ -777,6 +778,15 @@
         // Uptime
         const m = Math.floor(s.uptime / 60), h = Math.floor(m / 60);
         document.getElementById('uptime-txt').textContent = `Uptime: ${h > 0 ? h + 'h ' : ''}${m % 60}m`;
+        // Last activity
+        const la = document.getElementById('last-act');
+        if (s.lastApplyAgo !== null && s.lastApplyAgo !== undefined) {
+          la.textContent = s.lastApplyAgo < 1 ? '● Just now' : `● Last apply: ${s.lastApplyAgo}m ago`;
+          la.style.color = s.lastApplyAgo < 10 ? '#16A34A' : s.lastApplyAgo < 60 ? '#D97706' : '#94A3B8';
+        } else {
+          la.textContent = '● Idle';
+          la.style.color = '#94A3B8';
+        }
       } catch (e) { console.error(e); }
     }
 
@@ -854,10 +864,11 @@
       ins.push({ l: 'Total All-Time', v: s.appliedTotal });
       ins.push({ l: 'Profile Skills', v: s.profileSkills });
       ins.push({ l: 'Contacts Found', v: s.contactsFound });
+      ins.push({ l: 'Max Score', v: s.maxScore > 0 ? s.maxScore : '—' });
       if (s.topCompanies && s.topCompanies[0]) ins.push({ l: 'Top Company', v: `${s.topCompanies[0].name} (${s.topCompanies[0].count})` });
       if (s.topRoles && s.topRoles[0]) ins.push({ l: 'Top Role', v: `${s.topRoles[0].name} (${s.topRoles[0].count})` });
       ins.push({ l: 'Premium 70+', v: `${s.coverLetters} jobs` });
-      if (s.topCompanies && s.topCompanies.length > 1) ins.push({ l: '2nd Company', v: `${s.topCompanies[1].name} (${s.topCompanies[1].count})` });
+      ins.push({ l: 'Apps This Hour', v: s.appliedThisHour || 0 });
       if (s.topRoles && s.topRoles.length > 1) ins.push({ l: '2nd Role', v: `${s.topRoles[1].name} (${s.topRoles[1].count})` });
       // Peak hour
       const vol = s.volumeMap;

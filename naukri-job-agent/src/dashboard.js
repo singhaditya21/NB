@@ -111,12 +111,30 @@ function startDashboard() {
                 .slice(0, 5)
                 .map(([name, count]) => ({ name, count }));
 
-            // Gemini budget used today
-            const todayLog = budget[new Date().toISOString().slice(0, 10)] || {};
-            const geminiUsed = (todayLog.callsByModel?.FREE || 0) + (todayLog.callsByModel?.CHEAP || 0) + (todayLog.callsByModel?.BALANCED || 0);
+            // Gemini budget — try rate limiter counter first, then budget-log
+            let geminiUsed = 0;
+            try {
+                const gemMod = require('./gemini');
+                if (gemMod.rateLimiter && gemMod.rateLimiter.todayCalls !== undefined) {
+                    geminiUsed = gemMod.rateLimiter.todayCalls;
+                }
+            } catch { /* ignore */ }
+            if (geminiUsed === 0) {
+                const todayLog = budget[new Date().toISOString().slice(0, 10)] || {};
+                geminiUsed = (todayLog.callsByModel?.FREE || 0) + (todayLog.callsByModel?.CHEAP || 0) + (todayLog.callsByModel?.BALANCED || 0);
+            }
 
             // Learning
             const learning = readJSON(LEARNING_PATH, {});
+
+            // Max score in range
+            const maxScore = scores.length > 0 ? Math.max(...scores) : 0;
+
+            // Last applied timing
+            const lastJob = filtered.length > 0 ? filtered[filtered.length - 1] : null;
+            const lastApplyAgo = lastJob?.appliedAt
+                ? Math.round((Date.now() - new Date(lastJob.appliedAt).getTime()) / 60000)
+                : null;
 
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({
@@ -126,6 +144,7 @@ function startDashboard() {
                 messagesSent: stats.messagesToday || 0,
                 coverLetters: filtered.filter(j => j.matchScore >= 70).length,
                 avgScore,
+                maxScore,
                 scoreDist,
                 volumeMap,
                 pipeline,
@@ -138,6 +157,12 @@ function startDashboard() {
                 targetRoles: profile.targetRoles || [],
                 skillsLearned: learning.skillsAdded || [],
                 range,
+                // Live-updating metrics
+                appliedThisHour: stats.appliedThisHour || 0,
+                borderlineCount: stats.borderlineCount || 0,
+                lastInsight: stats.lastInsight || '',
+                lastUpdated: stats.lastUpdated || null,
+                lastApplyAgo,
             }));
             return;
         }
