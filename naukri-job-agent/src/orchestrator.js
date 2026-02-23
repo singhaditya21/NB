@@ -8,6 +8,9 @@ const jdAnalyzer = require('./jd-analyzer');
 const { generateCoverLetter } = require('./cover-letter');
 const { extractContactInfo, formatContactForTelegram } = require('./outreach-extractor');
 
+// Premium pipeline threshold — triggers cover letters, contacts, Gemini pitch
+const PREMIUM_THRESHOLD = 55;
+
 // ─── Module-level state ───
 let isPaused = false;
 let isRunning = false;
@@ -134,38 +137,58 @@ async function runNaukriCycle() {
                             logSuccessfulApply(job, score);
                             queueJDForFeedback(job);
 
-                            // ─── Premium pipeline for high-score jobs ───
-                            if (score.quickScore >= 70) {
-                                try {
-                                    const jdText = job.jdSnippet || `${job.title} at ${job.company}`;
+                            const jdText = job.jdSnippet || `${job.title} at ${job.company}`;
 
-                                    // Cover letter
+                            // ─── Contact extraction on ALL applied jobs (regex is free) ───
+                            try {
+                                const contact = await extractContactInfo(jdText, job);
+                                if (contact) {
+                                    logger.info(`📧 Contact found: ${job.company} — emails=${contact.emails.length} linkedin=${contact.linkedinUrls.length}`);
+                                    await sendMessage(formatContactForTelegram(contact)).catch(() => { });
+                                }
+                            } catch (cErr) {
+                                logger.warn(`Contact extraction failed: ${cErr.message}`);
+                            }
+
+                            // ─── Premium pipeline for 55+ score jobs ───
+                            if (score.quickScore >= PREMIUM_THRESHOLD) {
+                                logger.info(`🌟 Premium pipeline triggered: ${job.title} at ${job.company} (score ${score.quickScore})`);
+                                try {
+                                    // Cover letter via Gemini
                                     const letter = await generateCoverLetter(jdText, job, profile);
                                     if (letter) {
+                                        logger.info(`📝 Cover letter generated for ${job.company}`);
                                         await sendMessage(`-- COVER LETTER --\n${job.title} at ${job.company}\nScore: ${score.quickScore}\n\n${letter}`).catch(() => { });
-                                    }
-
-                                    // Contact extraction
-                                    const contact = await extractContactInfo(jdText, job);
-                                    if (contact) {
-                                        await sendMessage(formatContactForTelegram(contact)).catch(() => { });
                                     }
                                 } catch (premErr) {
                                     logger.warn(`Premium pipeline error: ${premErr.message}`);
                                 }
                             }
 
-                            // ─── Auto Recruiter Outreach (all applied jobs) ───
+                            // ─── Auto Recruiter Outreach — navigate back to JD page ───
                             try {
-                                const pitch = `Hi, I'm ${profile.name} with ${profile.totalExperience} experience in global operations, delivery, and AI-driven transformation. I just applied for the ${job.title} role and believe my background in scaling enterprise operations (impacting 1500+ users across US and intl markets) aligns well. Would love to connect.`;
+                                // After apply, page is on success redirect — go back to job page
+                                await page.goto(job.url, { waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => { });
+                                await randomDelay(1500, 2500);
+
+                                // Generate Gemini-powered pitch (falls back to hardcoded)
+                                let pitch;
+                                try {
+                                    pitch = await jdAnalyzer.generateRecruiterMessage(job, { matchScore: score.quickScore }, profile);
+                                } catch {
+                                    pitch = `Hi, I'm ${profile.name} with ${profile.totalExperience} experience. I just applied for the ${job.title} role — my background in scaling enterprise operations aligns well. Would love to connect.`;
+                                }
+
                                 const msgResult = await naukriAgent.sendRecruiterMessage(page, '', pitch);
                                 if (msgResult.success) {
-                                    logger.info(`Recruiter message sent for ${job.title} at ${job.company}`);
+                                    logger.info(`✉️ Recruiter message sent for ${job.title} at ${job.company}`);
                                     await sendMessage(`-- Recruiter Messaged --\n${job.title} at ${job.company}`).catch(() => { });
                                     memory.updateHourlyStats({ messagesToday: 1 });
+                                } else {
+                                    logger.warn(`Recruiter msg not available: ${msgResult.reason} (${job.company})`);
                                 }
                             } catch (msgErr) {
-                                logger.debug(`Recruiter message skipped: ${msgErr.message}`);
+                                logger.warn(`Recruiter outreach error: ${msgErr.message}`);
                             }
                         }
                     } catch (applyErr) {

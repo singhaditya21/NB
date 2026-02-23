@@ -40,7 +40,7 @@ const SELECTORS = {
         easyApplyButton: '#apply-button',
         recruiterCard: '[class*="recruiter"], .rec-card, .rec-details',
         recruiterName: '[class*="recruiter"] .name, .rec-name',
-        messageButton: '[class*="message"], button[class*="msg"], .msg-recruiter',
+        messageButton: '[class*="chat-btn"], [class*="message-btn"], button:has-text("Chat"), button:has-text("Message"), [class*="msg-recruiter"], a[class*="chat"]',
     },
     applyForm: {
         noticePeriod: 'select[name*="notice"], input[name*="notice"], [class*="notice"] select, [class*="notice"] input',
