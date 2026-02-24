@@ -219,6 +219,15 @@ function startDashboard() {
     const wss = new WebSocket.Server({ server });
     wss.on('connection', (ws) => {
         ws.send(JSON.stringify({ type: 'info', msg: 'Connected to Naukri Agent Dashboard' }));
+        // Bug 34: handle errors so bad clients don't crash the server
+        ws.on('error', (err) => {
+            logger.debug(`WebSocket client error: ${err.message}`);
+        });
+    });
+
+    // Bug 34: handle WebSocket server errors
+    wss.on('error', (err) => {
+        logger.warn(`WebSocket server error: ${err.message}`);
     });
 
     logEmitter.on('log', (entry) => {

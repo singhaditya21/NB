@@ -123,19 +123,43 @@ function initializeAllFiles() {
 function loadProfile() { return readJSON('profile.json') || DEFAULT_PROFILE; }
 function saveProfile(data) { writeJSON('profile.json', data); }
 
-// ─── Applied Jobs ───
+// ─── Applied Jobs (with in-memory cache for O(1) lookups) ───
+let _appliedCache = null; // Set of jobIds for fast lookup
+
+function _ensureAppliedCache() {
+    if (!_appliedCache) {
+        const jobs = readJSON('applied-jobs.json') || [];
+        _appliedCache = new Set(jobs.map(j => j.jobId));
+    }
+    return _appliedCache;
+}
+
 function getAppliedJobs() { return readJSON('applied-jobs.json') || []; }
 function getAppliedToday() {
     const today = new Date().toISOString().slice(0, 10);
     return getAppliedJobs().filter(j => j.appliedAt && j.appliedAt.startsWith(today));
 }
 function hasApplied(jobId) {
-    return getAppliedJobs().some(j => j.jobId === jobId);
+    return _ensureAppliedCache().has(jobId); // Bug 28: O(1) instead of O(n)
 }
 function logApplication(jobData) {
     const jobs = getAppliedJobs();
     jobs.push({ ...jobData, appliedAt: new Date().toISOString() });
+    // Bug 29: cap at 2000 entries, archive the rest
+    if (jobs.length > 2000) {
+        const archived = jobs.splice(0, jobs.length - 2000);
+        try {
+            const existing = readJSON('applied-jobs-archive.json') || [];
+            existing.push(...archived);
+            writeJSON('applied-jobs-archive.json', existing);
+            logger.info(`Archived ${archived.length} old applied jobs`);
+        } catch (e) {
+            logger.warn(`Archive write failed: ${e.message}`);
+        }
+    }
     writeJSON('applied-jobs.json', jobs);
+    // Update in-memory cache
+    _ensureAppliedCache().add(jobData.jobId);
 }
 function updateJobStatus(jobId, status) {
     const jobs = getAppliedJobs();

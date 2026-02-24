@@ -260,6 +260,8 @@ async function searchJobs(page, searchConfig) {
                         const salaryEl = el.querySelector('.sal-wrap span, .sal, [class*="sal"]');
                         const locEl = el.querySelector('.loc-wrap span, .locWdth, .loc');
                         const snippetEl = el.querySelector('.job-desc, .row3, .ellipsis');
+                        const href = titleEl ? titleEl.getAttribute('href') : '';
+                        const jobId = el.getAttribute('data-job-id') || (href && href.match(/-(\d+)(?:\?|$)/)?.[1]) || '';
                         // Bug 6: detect external apply
                         const applyEl = el.querySelector('#apply-button, [id*="apply-button"]');
                         const applyText = applyEl ? applyEl.textContent.trim().toLowerCase() : '';

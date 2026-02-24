@@ -129,6 +129,7 @@ async function runNaukriCycle() {
                                 const retry = await naukriAgent.applyEasyApply(page, job.url, profile);
                                 if (retry.success) {
                                     cycleApplied++;
+                                    appliedThisCycle.add(job.jobId); // Bug 33: track in retry path too
                                     logSuccessfulApply(job, score);
                                     queueJDForFeedback(job);
                                 }
@@ -176,9 +177,8 @@ async function runNaukriCycle() {
                                     if (letter && letter.length > 50) {
                                         logger.info(`📝 Cover letter generated for ${job.company} (${letter.length} chars)`);
                                         memory.updateHourlyStats({ coverLettersToday: 1 });
-                                        // Escape markdown special chars for Telegram
-                                        const safeLetter = letter.replace(/[*_`\[\]~>#+\-=|{}.!]/g, function (c) { return '\\' + c; });
-                                        await sendMessage(`📝 *Cover Letter*\n${job.title} at ${job.company}\nScore: ${score.quickScore}\n\n${safeLetter}`).catch(() => { });
+                                        // Bug 30: send as plain text to avoid garbled escaping
+                                        await sendMessage(`📝 Cover Letter — ${job.title} at ${job.company} (Score: ${score.quickScore})\n\n${letter}`).catch(() => { });
                                     } else {
                                         logger.warn(`Cover letter generation returned empty/short result`);
                                     }
@@ -187,32 +187,37 @@ async function runNaukriCycle() {
                                 }
                             }
 
-                            // ─── Auto Recruiter Outreach — already on JD page ───
-                            try {
-                                // Generate Gemini-powered pitch (falls back to hardcoded)
-                                let pitch;
+                            // ─── Auto Recruiter Outreach ───
+                            // Bug 31: check if already messaged this company
+                            if (memory.hasMessagedRecruiter(job.company)) {
+                                logger.info(`Already messaged recruiter at ${job.company} — skipping`);
+                            } else {
                                 try {
-                                    pitch = await jdAnalyzer.generateRecruiterMessage(job, { matchScore: score.quickScore }, profile);
-                                } catch {
-                                    pitch = `Hi, I'm ${profile.name} with ${profile.totalExperience} experience. I just applied for the ${job.title} role — my background in scaling enterprise operations aligns well. Would love to connect.`;
-                                }
+                                    // Generate Gemini-powered pitch (falls back to hardcoded)
+                                    let pitch;
+                                    try {
+                                        pitch = await jdAnalyzer.generateRecruiterMessage(job, { matchScore: score.quickScore }, profile);
+                                    } catch {
+                                        pitch = `Hi, I'm ${profile.name} with ${profile.totalExperience} experience. I just applied for the ${job.title} role — my background in scaling enterprise operations aligns well. Would love to connect.`;
+                                    }
 
-                                const msgResult = await naukriAgent.sendRecruiterMessage(page, recruiterName, pitch);
-                                if (msgResult.success) {
-                                    logger.info(`✉️ Recruiter message sent for ${job.title} at ${job.company}`);
-                                    await sendMessage(`✉️ Recruiter Messaged: ${job.title} at ${job.company}`).catch(() => { });
-                                    memory.updateHourlyStats({ messagesToday: 1 });
-                                    // Bug 11: persist recruiter message
-                                    memory.logRecruiterMessage({
-                                        company: job.company, title: job.title, jobId: job.jobId,
-                                        recruiterName: recruiterName, message: pitch.slice(0, 200),
-                                    });
-                                } else {
-                                    logger.warn(`Recruiter msg not available: ${msgResult.reason} (${job.company})`);
+                                    const msgResult = await naukriAgent.sendRecruiterMessage(page, recruiterName, pitch);
+                                    if (msgResult.success) {
+                                        logger.info(`✉️ Recruiter message sent for ${job.title} at ${job.company}`);
+                                        await sendMessage(`✉️ Recruiter Messaged: ${job.title} at ${job.company}`).catch(() => { });
+                                        memory.updateHourlyStats({ messagesToday: 1 });
+                                        // Bug 11: persist recruiter message
+                                        memory.logRecruiterMessage({
+                                            company: job.company, title: job.title, jobId: job.jobId,
+                                            recruiterName: recruiterName, message: pitch.slice(0, 200),
+                                        });
+                                    } else {
+                                        logger.warn(`Recruiter msg not available: ${msgResult.reason} (${job.company})`);
+                                    }
+                                } catch (msgErr) {
+                                    logger.warn(`Recruiter outreach error: ${msgErr.message}`);
                                 }
-                            } catch (msgErr) {
-                                logger.warn(`Recruiter outreach error: ${msgErr.message}`);
-                            }
+                            } // end hasMessagedRecruiter check
                         }
                     } catch (applyErr) {
                         logger.warn(`Apply failed: ${job.title} — ${applyErr.message}`);
@@ -364,7 +369,7 @@ async function runFollowUpCycle() {
         const threshold = 48 * 60 * 60 * 1000; // 48 hours
 
         const needsFollowUp = jobs.filter(j => {
-            if (j.status !== 'applied') return false;
+            if (j.status !== 'applied') return false; // Bug 26: skip already followed_up
             if (!j.appliedAt) return false;
             const elapsed = now - new Date(j.appliedAt).getTime();
             return elapsed > threshold;
@@ -383,8 +388,9 @@ async function runFollowUpCycle() {
             const followUp = await callGemini(prompt, 'follow_up_draft');
             if (followUp) {
                 logger.info(`Follow-up drafted for ${job.company}: ${followUp.slice(0, 50)}...`);
-                // Note: Actually sending requires browser session — log for Telegram report
                 await sendMessage(`📬 *Follow-up Ready*\n🏢 ${job.company} — ${job.title}\n\n${followUp}`);
+                // Bug 26: mark as followed_up so it's not re-drafted every 3 hours
+                memory.updateJobStatus(job.jobId, 'followed_up');
             }
         }
     } catch (err) {

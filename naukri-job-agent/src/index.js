@@ -154,6 +154,12 @@ function setupCronJobs() {
         });
     });
 
+    // Every hour — reset hourly counters (Bug 27: appliedThisHour never reset)
+    cron.schedule('0 * * * *', () => {
+        logger.info('CRON: hourly stats reset');
+        memory.resetHourlyStats();
+    });
+
     // Midnight — daily reset
     cron.schedule('0 0 * * *', () => {
         logger.info('CRON: midnight reset');
