@@ -114,11 +114,13 @@ function startDashboard() {
             // Gemini budget — read rate limiter + budget guardian status
             let geminiUsed = 0;
             let geminiExhausted = false;
+            let geminiLimit = 5000;
             try {
                 const gemMod = require('./gemini');
                 if (gemMod.rateLimiter) {
                     const rlStats = gemMod.rateLimiter.getStats();
                     geminiUsed = rlStats.callsToday || 0;
+                    geminiLimit = rlStats.maxDaily || 5000;
                     if (rlStats.quotaExhausted) geminiExhausted = true;
                 }
                 if (gemMod.budgetGuardian && gemMod.budgetGuardian.isBudgetPaused()) {
@@ -159,7 +161,7 @@ function startDashboard() {
                 topCompanies,
                 topRoles,
                 geminiUsed,
-                geminiLimit: 1400,
+                geminiLimit,
                 geminiExhausted,
                 uptime: process.uptime(),
                 profileSkills: (profile.skills || []).length,

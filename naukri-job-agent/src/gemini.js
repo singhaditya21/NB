@@ -214,8 +214,8 @@ class FreeRateLimiter {
         this._callsToday = 0;
         this._currentDay = new Date().toISOString().slice(0, 10);
         this._externalQuotaHit = false;  // Set when Google returns 429
-        this.MIN_INTERVAL_MS = 4500; // 4.5s between calls = max ~13 RPM
-        this.MAX_DAILY_CALLS = 1400;
+        this.MIN_INTERVAL_MS = 1000; // 1s between calls — paid tier allows much higher RPM
+        this.MAX_DAILY_CALLS = 5000; // Conservative daily cap for paid tier
     }
 
     _resetIfNewDay() {

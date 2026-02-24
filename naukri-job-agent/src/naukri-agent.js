@@ -170,7 +170,7 @@ async function login(page) {
         }
 
         // Wait for email field
-        await page.waitForSelector(SELECTORS.login.emailInput, { timeout: 10000 });
+        await page.waitForSelector(SELECTORS.login.emailInput, { timeout: 30000 });
 
         // Type email
         await humanType(page, SELECTORS.login.emailInput, config.naukriEmail);
