@@ -137,13 +137,29 @@ async function runNaukriCycle() {
                             logSuccessfulApply(job, score);
                             queueJDForFeedback(job);
 
-                            const jdText = job.jdSnippet || `${job.title} at ${job.company}`;
+                            // ─── Navigate to job page to extract full JD + recruiter msg ───
+                            let fullJDText = job.jdSnippet || '';
+                            try {
+                                await page.goto(job.url, { waitUntil: 'domcontentloaded', timeout: 20000 });
+                                await randomDelay(1500, 2500);
+                                // Extract full JD text from the page
+                                fullJDText = await page.evaluate(() => {
+                                    const el = document.querySelector('div[class*="dang-inner-html"], .job-desc .dang-inner-html, section[class*="job-desc-container"]');
+                                    return el ? el.innerText.trim() : '';
+                                }).catch(() => '');
+                                if (fullJDText.length > 50) {
+                                    logger.info(`📄 Full JD extracted: ${fullJDText.length} chars for ${job.company}`);
+                                }
+                            } catch (navErr) {
+                                logger.warn(`Could not navigate to JD page: ${navErr.message}`);
+                            }
+                            const jdText = fullJDText.length > 50 ? fullJDText : (job.jdSnippet || `${job.title} at ${job.company}`);
 
-                            // ─── Contact extraction on ALL applied jobs (regex is free) ───
+                            // ─── Contact extraction on ALL applied jobs (uses full JD text) ───
                             try {
                                 const contact = await extractContactInfo(jdText, job);
-                                if (contact) {
-                                    logger.info(`📧 Contact found: ${job.company} — emails=${contact.emails.length} linkedin=${contact.linkedinUrls.length}`);
+                                if (contact && (contact.emails.length > 0 || contact.phones.length > 0 || contact.linkedinUrls.length > 0)) {
+                                    logger.info(`📧 Contact found: ${job.company} — emails=${contact.emails.length} phones=${contact.phones.length} linkedin=${contact.linkedinUrls.length}`);
                                     await sendMessage(formatContactForTelegram(contact)).catch(() => { });
                                 }
                             } catch (cErr) {
@@ -156,21 +172,21 @@ async function runNaukriCycle() {
                                 try {
                                     // Cover letter via Gemini
                                     const letter = await generateCoverLetter(jdText, job, profile);
-                                    if (letter) {
-                                        logger.info(`📝 Cover letter generated for ${job.company}`);
-                                        await sendMessage(`-- COVER LETTER --\n${job.title} at ${job.company}\nScore: ${score.quickScore}\n\n${letter}`).catch(() => { });
+                                    if (letter && letter.length > 50) {
+                                        logger.info(`📝 Cover letter generated for ${job.company} (${letter.length} chars)`);
+                                        // Escape markdown special chars for Telegram
+                                        const safeLetter = letter.replace(/[*_`\[\]~>#+\-=|{}.!]/g, function (c) { return '\\' + c; });
+                                        await sendMessage(`📝 *Cover Letter*\n${job.title} at ${job.company}\nScore: ${score.quickScore}\n\n${safeLetter}`).catch(() => { });
+                                    } else {
+                                        logger.warn(`Cover letter generation returned empty/short result`);
                                     }
                                 } catch (premErr) {
                                     logger.warn(`Premium pipeline error: ${premErr.message}`);
                                 }
                             }
 
-                            // ─── Auto Recruiter Outreach — navigate back to JD page ───
+                            // ─── Auto Recruiter Outreach — already on JD page ───
                             try {
-                                // After apply, page is on success redirect — go back to job page
-                                await page.goto(job.url, { waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => { });
-                                await randomDelay(1500, 2500);
-
                                 // Generate Gemini-powered pitch (falls back to hardcoded)
                                 let pitch;
                                 try {
@@ -182,7 +198,7 @@ async function runNaukriCycle() {
                                 const msgResult = await naukriAgent.sendRecruiterMessage(page, '', pitch);
                                 if (msgResult.success) {
                                     logger.info(`✉️ Recruiter message sent for ${job.title} at ${job.company}`);
-                                    await sendMessage(`-- Recruiter Messaged --\n${job.title} at ${job.company}`).catch(() => { });
+                                    await sendMessage(`✉️ Recruiter Messaged: ${job.title} at ${job.company}`).catch(() => { });
                                     memory.updateHourlyStats({ messagesToday: 1 });
                                 } else {
                                     logger.warn(`Recruiter msg not available: ${msgResult.reason} (${job.company})`);
