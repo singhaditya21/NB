@@ -90,17 +90,21 @@ Respond as JSON:
             }
         }
 
-        // Save updated profile
+        // Save updated profile (cap skills at 50, roles at 15 to prevent unbounded growth)
         if (changes.skillsAdded.length > 0 || changes.rolesAdded.length > 0) {
+            if (profile.skills.length > 50) profile.skills = profile.skills.slice(-50);
+            if (profile.targetRoles.length > 15) profile.targetRoles = profile.targetRoles.slice(0, 15);
             fs.writeFileSync(PROFILE_PATH, JSON.stringify(profile, null, 2));
-            logger.info(`Profile updated: +${changes.skillsAdded.length} skills, +${changes.rolesAdded.length} roles`);
+            logger.info(`Profile updated: +${changes.skillsAdded.length} skills, +${changes.rolesAdded.length} roles (total: ${profile.skills.length} skills, ${profile.targetRoles.length} roles)`);
         }
 
-        // Update learning log
+        // Update learning log (trim arrays to prevent unbounded growth)
         log.lastLearnedAt = today;
         log.totalLearnings++;
         log.skillsAdded.push(...changes.skillsAdded);
         log.rolesAdded.push(...changes.rolesAdded);
+        if (log.skillsAdded.length > 50) log.skillsAdded = log.skillsAdded.slice(-50);
+        if (log.rolesAdded.length > 50) log.rolesAdded = log.rolesAdded.slice(-50);
         fs.writeFileSync(LEARNING_LOG_PATH, JSON.stringify(log, null, 2));
 
         return { learned: true, ...changes };

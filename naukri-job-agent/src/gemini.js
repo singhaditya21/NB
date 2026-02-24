@@ -214,6 +214,8 @@ class FreeRateLimiter {
         this._callsToday = 0;
         this._currentDay = new Date().toISOString().slice(0, 10);
         this._externalQuotaHit = false;  // Set when Google returns 429
+        this._quotaHitTime = 0; // Timestamp when quota was marked exhausted
+        this.QUOTA_COOLDOWN_MS = 10 * 60 * 1000; // 10 min cooldown after 429 (not permanent)
         this.MIN_INTERVAL_MS = 1000; // 1s between calls — paid tier allows much higher RPM
         this.MAX_DAILY_CALLS = 5000; // Conservative daily cap for paid tier
     }
@@ -224,17 +226,27 @@ class FreeRateLimiter {
             this._currentDay = today;
             this._callsToday = 0;
             this._externalQuotaHit = false;
+            this._quotaHitTime = 0;
         }
     }
 
     markQuotaExhausted() {
         this._externalQuotaHit = true;
+        this._quotaHitTime = Date.now();
     }
 
     canCall() {
         this._resetIfNewDay();
+        // Auto-recover from 429 after cooldown period
         if (this._externalQuotaHit) {
-            return { allowed: false, reason: `Google API quota exhausted (429)` };
+            const elapsed = Date.now() - this._quotaHitTime;
+            if (elapsed > this.QUOTA_COOLDOWN_MS) {
+                this._externalQuotaHit = false;
+                this._quotaHitTime = 0;
+                logger.info('Rate limiter: 429 cooldown expired — retrying Gemini calls');
+            } else {
+                return { allowed: false, reason: `Google API quota exhausted (429) — retrying in ${Math.ceil((this.QUOTA_COOLDOWN_MS - elapsed) / 60000)}m` };
+            }
         }
         if (this._callsToday >= this.MAX_DAILY_CALLS) {
             return { allowed: false, reason: `Daily call limit reached (${this._callsToday}/${this.MAX_DAILY_CALLS})` };

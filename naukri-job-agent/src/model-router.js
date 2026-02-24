@@ -27,19 +27,18 @@ const MODEL_REGISTRY = {
     },
 
     costs: {
-        // All $0 — free tier only
-        FREE: { input_batch: 0.0, output_batch: 0.0, has_free_tier: true },
-        CHEAP: { input_batch: 0.0, output_batch: 0.0, has_free_tier: true },
-        BALANCED: { input_batch: 0.0, output_batch: 0.0, has_free_tier: true },
+        // Gemini 2.0 Flash pricing (pay-as-you-go)
+        FREE: { input_batch: 0.10, output_batch: 0.40, has_free_tier: false },
+        CHEAP: { input_batch: 0.10, output_batch: 0.40, has_free_tier: false },
+        BALANCED: { input_batch: 0.10, output_batch: 0.40, has_free_tier: false },
     },
 
-    // Free tier hard limits: 15 RPM, 1,500 RPD
-    // We cap at 1,400 to leave buffer
+    // Paid tier limits: 5000 RPD conservative cap
     dailyCallLimits: {
-        FREE: 1400,
-        CHEAP: 1400,
-        BALANCED: 1400,
-        TOTAL: 1400,
+        FREE: 5000,
+        CHEAP: 5000,
+        BALANCED: 5000,
+        TOTAL: 5000,
     },
 };
 

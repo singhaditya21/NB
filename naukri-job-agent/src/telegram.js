@@ -249,14 +249,15 @@ Paused: ${budget.paused ? `Yes (until ${budget.pausedUntil})` : 'No'}`;
             const job = queue.find(q => q.jobId === jobId);
             if (job) {
                 memory.removeFromExternalQueue(jobId);
+                // Note: this marks as 'queued_manual' — NOT actually applied via browser
                 memory.logApplication({
                     jobId: job.jobId, company: job.company, title: job.title, url: job.url,
                     matchScore: job.matchScore, salary: job.salary || '',
                     recruiterName: '', recruiterMessageSent: false,
-                    status: 'applied', jdSummary: job.jdSummary || '',
+                    status: 'queued_manual', jdSummary: job.jdSummary || '',
                     topGap: '', topStrength: '',
                 });
-                await ctx.editMessageText(`✅ Applied to *${job.company}* — ${job.title}`, { parse_mode: 'Markdown' });
+                await ctx.editMessageText(`📋 *${job.company}* — ${job.title} marked for manual apply\n🔗 ${job.url}`, { parse_mode: 'Markdown' });
             } else {
                 await ctx.editMessageText('Job not found in queue.');
             }
@@ -266,12 +267,7 @@ Paused: ${budget.paused ? `Yes (until ${budget.pausedUntil})` : 'No'}`;
             const jobId = data.replace('skip_', '');
             await ctx.answerCbQuery('Skipped.');
             memory.removeFromExternalQueue(jobId);
-            memory.logApplication({
-                jobId, company: '', title: '', url: '',
-                matchScore: 0, salary: '', recruiterName: '',
-                recruiterMessageSent: false, status: 'skipped',
-                jdSummary: '', topGap: '', topStrength: '',
-            });
+            // Don't create a fake applied-jobs entry with empty fields
             await ctx.editMessageText('❌ Skipped.');
         }
     });
