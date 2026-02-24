@@ -174,6 +174,7 @@ async function runNaukriCycle() {
                                     const letter = await generateCoverLetter(jdText, job, profile);
                                     if (letter && letter.length > 50) {
                                         logger.info(`📝 Cover letter generated for ${job.company} (${letter.length} chars)`);
+                                        memory.updateHourlyStats({ coverLettersToday: 1 });
                                         // Escape markdown special chars for Telegram
                                         const safeLetter = letter.replace(/[*_`\[\]~>#+\-=|{}.!]/g, function (c) { return '\\' + c; });
                                         await sendMessage(`📝 *Cover Letter*\n${job.title} at ${job.company}\nScore: ${score.quickScore}\n\n${safeLetter}`).catch(() => { });

@@ -174,6 +174,7 @@ function getHourlyStats() {
         messagesThisHour: 0, messagesToday: 0,
         repliesToday: 0, externalQueueCount: 0,
         borderlineCount: 0, avgMatchScore: 0,
+        coverLettersToday: 0,
         topMatchThisHour: null, lastInsight: '',
         lastUpdated: new Date().toISOString(),
     };

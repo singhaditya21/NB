@@ -152,7 +152,7 @@ function startDashboard() {
                 appliedTotal: allApplied.length,
                 contactsFound: contacts.length,
                 messagesSent: stats.messagesToday || 0,
-                coverLetters: filtered.filter(j => j.matchScore >= 55).length,
+                coverLetters: stats.coverLettersToday || 0,
                 avgScore,
                 maxScore,
                 scoreDist,

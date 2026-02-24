@@ -16,14 +16,22 @@ function setOrchestrator(orch) { _orchestrator = orch; }
 // ─── Core send functions ───
 async function sendMessage(text) {
     try {
-        await bot.telegram.sendMessage(CHAT_ID, text, { parse_mode: 'Markdown' });
+        // Sanitize: escape unmatched markdown chars that crash Telegram
+        let safe = text;
+        // Ensure paired markdown — if odd number of *, strip them
+        const starCount = (safe.match(/\*/g) || []).length;
+        if (starCount % 2 !== 0) safe = safe.replace(/\*/g, '');
+        const underCount = (safe.match(/_/g) || []).length;
+        if (underCount % 2 !== 0) safe = safe.replace(/_/g, '');
+        const btCount = (safe.match(/`/g) || []).length;
+        if (btCount % 2 !== 0) safe = safe.replace(/`/g, '\'');
+        await bot.telegram.sendMessage(CHAT_ID, safe, { parse_mode: 'Markdown' });
     } catch (err) {
-        logger.error(`Telegram sendMessage failed: ${err.message}`);
-        // Retry without markdown on parse failure
-        if (err.description && err.description.includes("can't parse")) {
-            try {
-                await bot.telegram.sendMessage(CHAT_ID, text.replace(/[*_`\[\]]/g, ''));
-            } catch { }
+        // Always retry as plaintext on any failure
+        try {
+            await bot.telegram.sendMessage(CHAT_ID, text.replace(/[*_`\[\]]/g, ''));
+        } catch (retryErr) {
+            logger.error(`Telegram sendMessage failed: ${retryErr.message}`);
         }
     }
 }
