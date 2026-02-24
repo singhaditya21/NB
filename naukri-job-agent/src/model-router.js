@@ -27,10 +27,11 @@ const MODEL_REGISTRY = {
     },
 
     costs: {
-        // Gemini 2.0 Flash pricing (pay-as-you-go)
-        FREE: { input_batch: 0.10, output_batch: 0.40, has_free_tier: false },
-        CHEAP: { input_batch: 0.10, output_batch: 0.40, has_free_tier: false },
-        BALANCED: { input_batch: 0.10, output_batch: 0.40, has_free_tier: false },
+        // Gemini 2.5 Flash — all tiers on free tier ($0.00/month)
+        // BUG-8: Set has_free_tier=true to prevent phantom cost tracking
+        FREE: { input_batch: 0.10, output_batch: 0.40, has_free_tier: true },
+        CHEAP: { input_batch: 0.10, output_batch: 0.40, has_free_tier: true },
+        BALANCED: { input_batch: 0.10, output_batch: 0.40, has_free_tier: true },
     },
 
     // Paid tier limits: 5000 RPD conservative cap

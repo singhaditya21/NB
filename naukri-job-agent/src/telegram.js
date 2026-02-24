@@ -14,8 +14,20 @@ let _orchestrator = null;
 function setOrchestrator(orch) { _orchestrator = orch; }
 
 // ─── Core send functions ───
+// BUG-10: Telegram rate limiting — max 20 msgs/min
+let _lastTgSendTime = 0;
+const TG_MIN_INTERVAL_MS = 3000; // 3s between messages
+
 async function sendMessage(text) {
     try {
+        // Rate limit: wait if sending too fast
+        const now = Date.now();
+        const elapsed = now - _lastTgSendTime;
+        if (elapsed < TG_MIN_INTERVAL_MS) {
+            await new Promise(r => setTimeout(r, TG_MIN_INTERVAL_MS - elapsed));
+        }
+        _lastTgSendTime = Date.now();
+
         // Sanitize: escape unmatched markdown chars that crash Telegram
         let safe = text;
         // Ensure paired markdown — if odd number of *, strip them

@@ -73,6 +73,28 @@ let _context = null;
 let _page = null;
 let _isLoggedIn = false;
 
+// BUG-1: Check if browser is alive without side effects
+async function isBrowserAlive() {
+    if (!_browser || !_page) return false;
+    try {
+        await _page.evaluate(() => true);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+// BUG-1: Force-close everything and create a fresh browser
+async function forceNewBrowser() {
+    logger.info('Force-closing browser and creating fresh instance...');
+    // Force-close even if broken
+    if (_browser) {
+        try { await _browser.close(); } catch { }
+    }
+    _browser = null; _context = null; _page = null; _isLoggedIn = false;
+    return createBrowser();
+}
+
 async function createBrowser() {
     // Reuse existing browser+page if still alive
     if (_browser && _page) {
@@ -81,7 +103,11 @@ async function createBrowser() {
             logger.info('Reusing existing browser session');
             return { browser: _browser, page: _page };
         } catch {
-            logger.info('Previous browser session dead — creating new one');
+            logger.warn('Previous browser session dead — force-closing and recreating');
+            // BUG-1: Force-close the dead browser process before resetting
+            if (_browser) {
+                try { await _browser.close(); } catch { }
+            }
             _browser = null; _context = null; _page = null; _isLoggedIn = false;
         }
     }
@@ -565,15 +591,29 @@ async function applyEasyApply(page, jobUrl, profile) {
 }
 
 // ─── Send Recruiter Message ───
+// BUG-5: Track consecutive failures — skip after too many
+let _recruiterMsgFailCount = 0;
+const MAX_RECRUITER_MSG_FAILS = 5;
+
 async function sendRecruiterMessage(page, recruiterName, messageText) {
+    // BUG-5: If selectors have failed too many times, skip entirely
+    if (_recruiterMsgFailCount >= MAX_RECRUITER_MSG_FAILS) {
+        return { success: false, reason: 'recruiter messaging disabled — selectors outdated (5+ consecutive failures)' };
+    }
+
     try {
         const msgBtn = await page.$(SELECTORS.jobDetail.messageButton);
         if (!msgBtn) {
+            _recruiterMsgFailCount++;
+            if (_recruiterMsgFailCount >= MAX_RECRUITER_MSG_FAILS) {
+                logger.warn('Recruiter messaging disabled for this session — selectors consistently fail');
+            }
             return { success: false, reason: 'no message button' };
         }
 
         const isVisible = await msgBtn.isVisible().catch(() => false);
         if (!isVisible) {
+            _recruiterMsgFailCount++;
             return { success: false, reason: 'message button not visible' };
         }
 
@@ -584,6 +624,7 @@ async function sendRecruiterMessage(page, recruiterName, messageText) {
         // Find message textarea
         const textarea = await page.$('textarea, [contenteditable="true"], input[type="text"]');
         if (!textarea) {
+            _recruiterMsgFailCount++;
             return { success: false, reason: 'message input not found' };
         }
 
@@ -601,12 +642,15 @@ async function sendRecruiterMessage(page, recruiterName, messageText) {
             await sendBtn.click();
             await randomDelay(1500, 2500);
             logger.info(`Recruiter message sent to ${recruiterName}`);
+            _recruiterMsgFailCount = 0; // Reset on success
             return { success: true };
         }
 
+        _recruiterMsgFailCount++;
         return { success: false, reason: 'send button not found' };
     } catch (err) {
         logger.error(`sendRecruiterMessage error: ${err.message}`);
+        _recruiterMsgFailCount++;
         return { success: false, reason: err.message };
     }
 }
@@ -749,6 +793,8 @@ module.exports = {
     SELECTORS,
     createBrowser,
     closeBrowser,
+    isBrowserAlive,
+    forceNewBrowser,
     detectCaptcha,
     login,
     isLoggedIn,

@@ -215,9 +215,11 @@ class FreeRateLimiter {
         this._currentDay = new Date().toISOString().slice(0, 10);
         this._externalQuotaHit = false;  // Set when Google returns 429
         this._quotaHitTime = 0; // Timestamp when quota was marked exhausted
-        this.QUOTA_COOLDOWN_MS = 10 * 60 * 1000; // 10 min cooldown after 429 (not permanent)
-        this.MIN_INTERVAL_MS = 1000; // 1s between calls — paid tier allows much higher RPM
-        this.MAX_DAILY_CALLS = 5000; // Conservative daily cap for paid tier
+        this._consecutive429s = 0; // BUG: Exponential backoff counter
+        // Exponential backoff cooldowns: 30s, 2m, 5m, 10m
+        this.COOLDOWN_STEPS_MS = [30_000, 120_000, 300_000, 600_000];
+        this.MIN_INTERVAL_MS = 1000; // 1s between calls
+        this.MAX_DAILY_CALLS = 5000; // Conservative daily cap
     }
 
     _resetIfNewDay() {
@@ -233,19 +235,29 @@ class FreeRateLimiter {
     markQuotaExhausted() {
         this._externalQuotaHit = true;
         this._quotaHitTime = Date.now();
+        this._consecutive429s++;
+    }
+
+    // Reset on successful call
+    markSuccess() {
+        this._consecutive429s = 0;
+        this._externalQuotaHit = false;
+        this._quotaHitTime = 0;
     }
 
     canCall() {
         this._resetIfNewDay();
-        // Auto-recover from 429 after cooldown period
+        // Auto-recover from 429 after cooldown period (exponential backoff)
         if (this._externalQuotaHit) {
             const elapsed = Date.now() - this._quotaHitTime;
-            if (elapsed > this.QUOTA_COOLDOWN_MS) {
+            const backoffIdx = Math.min(this._consecutive429s - 1, this.COOLDOWN_STEPS_MS.length - 1);
+            const cooldownMs = this.COOLDOWN_STEPS_MS[Math.max(0, backoffIdx)];
+            if (elapsed > cooldownMs) {
                 this._externalQuotaHit = false;
                 this._quotaHitTime = 0;
-                logger.info('Rate limiter: 429 cooldown expired — retrying Gemini calls');
+                logger.info(`Rate limiter: 429 cooldown expired (${Math.round(cooldownMs / 1000)}s) — retrying Gemini calls`);
             } else {
-                return { allowed: false, reason: `Google API quota exhausted (429) — retrying in ${Math.ceil((this.QUOTA_COOLDOWN_MS - elapsed) / 60000)}m` };
+                return { allowed: false, reason: `Google API quota exhausted (429) — retrying in ${Math.ceil((cooldownMs - elapsed) / 60000)}m` };
             }
         }
         if (this._callsToday >= this.MAX_DAILY_CALLS) {
@@ -325,6 +337,9 @@ async function callGemini(prompt, taskType, options = {}) {
 
             // Record cost
             budgetGuardian.recordCall(costTier, inputTokens, outputTokens);
+
+            // Reset rate limit backoff on success
+            rateLimiter.markSuccess();
 
             logger.info(`Gemini call: task=${taskType} model=${modelId} mode=${mode} in=${inputTokens} out=${outputTokens}`);
 

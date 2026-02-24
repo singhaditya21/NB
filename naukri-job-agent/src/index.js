@@ -48,6 +48,8 @@ async function startup() {
 
         // b. Initialize memory files
         memory.initializeAllFiles();
+        // BUG-7: Recalculate today's stats from applied-jobs.json (survives restarts)
+        memory.recalculateDailyStats();
         logger.info('✓ Memory initialized');
 
         // c. Models — all routed to gemini-2.0-flash (free tier)

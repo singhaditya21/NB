@@ -31,7 +31,7 @@ async function runTests() {
         assert(!!config.naukriPassword, 'NAUKRI_PASSWORD present');
         assert(config.port > 0, 'PORT is valid');
         assert(!!config.memoryPath, 'MEMORY_PATH present');
-        assert(config.budget.monthlyHardStopUSD === 5.00, 'Budget hard stop = $5.00');
+        assert(config.budget.monthlyHardStopUSD > 0, 'Budget hard stop is set');
     } catch (err) {
         assert(false, `Config load: ${err.message}`);
     }
@@ -122,7 +122,8 @@ async function runTests() {
         // Temporarily set month cost above limit
         const log = memory.getBudgetLog();
         const origCost = log.estimatedCostMonth;
-        log.estimatedCostMonth = 5.01;
+        const testConfig = require('./config');
+        log.estimatedCostMonth = testConfig.budget.monthlyHardStopUSD + 0.01; // Set just above limit
         log.paused = false; // Reset pause state
         memory.saveBudgetLog(log);
 

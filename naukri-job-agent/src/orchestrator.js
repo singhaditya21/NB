@@ -33,7 +33,7 @@ function getState() {
     return { isPaused, isRunning, emergencyStop };
 }
 
-// ─── 1. runNaukriCycle — KEYWORD-ONLY (no Gemini in the apply loop) ───
+// ─── 1. runNaukriCycle — KEYWORD + optional AI screening ───
 async function runNaukriCycle() {
     if (isPaused || isRunning || emergencyStop) {
         logger.info(`Cycle skipped: paused=${isPaused} running=${isRunning} emergency=${emergencyStop}`);
@@ -44,7 +44,7 @@ async function runNaukriCycle() {
     let page;
     let cycleApplied = 0;
     let cycleSkipped = 0;
-    const appliedThisCycle = new Set(); // Bug 5: prevent duplicate applies within same cycle
+    const appliedThisCycle = new Set();
 
     try {
         const result = await naukriAgent.createBrowser();
@@ -55,7 +55,6 @@ async function runNaukriCycle() {
             const loginResult = await naukriAgent.login(page);
             if (!loginResult.success) {
                 await sendAlert('Login Failed', `Reason: ${loginResult.reason}. Retrying next cycle.`);
-                // Bug 4: DON'T return here — fall through to finally so isRunning resets
                 isRunning = false;
                 return;
             }
@@ -91,8 +90,10 @@ async function runNaukriCycle() {
 
             // Filter already applied + blocklisted
             const newJobs = jobs.filter(j => {
-                if (memory.hasApplied(j.jobId)) return false;
-                if (appliedThisCycle.has(j.jobId)) return false; // Bug 5: skip if applied earlier in this cycle
+                // BUG-4: Normalize jobId for dedup
+                const normalizedId = normalizeJobId(j.jobId, j.url);
+                if (memory.hasApplied(normalizedId) || memory.hasApplied(j.jobId)) return false;
+                if (appliedThisCycle.has(normalizedId)) return false;
                 if (memory.isCompanyBlocked(j.company)) return false;
                 return true;
             });
@@ -104,11 +105,30 @@ async function runNaukriCycle() {
             for (const job of newJobs) {
                 if (isPaused || emergencyStop) break;
 
-                const score = keywordScreen(
+                // BUG-4: Normalize jobId
+                job.jobId = normalizeJobId(job.jobId, job.url);
+
+                let score = keywordScreen(
                     `${job.title} ${job.company} ${job.salary || ''} ${job.jdSnippet || ''}`,
                     profile,
                     job
                 );
+
+                // BUG-3: AI screening for borderline jobs (score 45–60)
+                if (score.quickScore >= 45 && score.quickScore < 60) {
+                    try {
+                        const aiScore = await jdAnalyzer.screenJD(
+                            `${job.title} at ${job.company}. ${job.jdSnippet || ''}`,
+                            profile
+                        );
+                        if (aiScore && typeof aiScore.quickScore === 'number') {
+                            logger.info(`AI screening: ${job.title} keyword=${score.quickScore} ai=${aiScore.quickScore}`);
+                            score = aiScore; // Use AI score instead
+                        }
+                    } catch (aiErr) {
+                        logger.debug(`AI screening skipped: ${aiErr.message}`);
+                    }
+                }
 
                 if (score.quickScore < 45) {
                     cycleSkipped++;
@@ -125,11 +145,10 @@ async function runNaukriCycle() {
                             const loginResult = await naukriAgent.login(page);
                             if (loginResult.success) {
                                 naukriAgent.setLoggedIn(true);
-                                // Retry apply
                                 const retry = await naukriAgent.applyEasyApply(page, job.url, profile);
                                 if (retry.success) {
                                     cycleApplied++;
-                                    appliedThisCycle.add(job.jobId); // Bug 33: track in retry path too
+                                    appliedThisCycle.add(job.jobId);
                                     logSuccessfulApply(job, score);
                                     queueJDForFeedback(job);
                                 }
@@ -139,11 +158,11 @@ async function runNaukriCycle() {
 
                         if (applyResult.success) {
                             cycleApplied++;
-                            appliedThisCycle.add(job.jobId); // Bug 5: mark applied in this cycle
+                            appliedThisCycle.add(job.jobId);
                             logSuccessfulApply(job, score);
                             queueJDForFeedback(job);
 
-                            // ─── Use getJDText for full JD extraction (Bug 8) ───
+                            // ─── Use getJDText for full JD extraction ───
                             let jdText = job.jdSnippet || `${job.title} at ${job.company}`;
                             let recruiterName = '';
                             try {
@@ -157,7 +176,7 @@ async function runNaukriCycle() {
                                 logger.warn(`JD extraction failed: ${jdErr.message}`);
                             }
 
-                            // ─── Contact extraction on ALL applied jobs (uses full JD text) ───
+                            // ─── Contact extraction on ALL applied jobs ───
                             try {
                                 const contact = await extractContactInfo(jdText, job);
                                 if (contact && (contact.emails.length > 0 || contact.phones.length > 0 || contact.linkedinUrls.length > 0)) {
@@ -172,12 +191,10 @@ async function runNaukriCycle() {
                             if (score.quickScore >= PREMIUM_THRESHOLD) {
                                 logger.info(`🌟 Premium pipeline triggered: ${job.title} at ${job.company} (score ${score.quickScore})`);
                                 try {
-                                    // Cover letter via Gemini
                                     const letter = await generateCoverLetter(jdText, job, profile);
                                     if (letter && letter.length > 50) {
                                         logger.info(`📝 Cover letter generated for ${job.company} (${letter.length} chars)`);
                                         memory.updateHourlyStats({ coverLettersToday: 1 });
-                                        // Bug 30: send as plain text to avoid garbled escaping
                                         await sendMessage(`📝 Cover Letter — ${job.title} at ${job.company} (Score: ${score.quickScore})\n\n${letter}`).catch(() => { });
                                     } else {
                                         logger.warn(`Cover letter generation returned empty/short result`);
@@ -188,12 +205,10 @@ async function runNaukriCycle() {
                             }
 
                             // ─── Auto Recruiter Outreach ───
-                            // Bug 31: check if already messaged this company
                             if (memory.hasMessagedRecruiter(job.company)) {
                                 logger.info(`Already messaged recruiter at ${job.company} — skipping`);
                             } else {
                                 try {
-                                    // Generate Gemini-powered pitch (falls back to hardcoded)
                                     let pitch;
                                     try {
                                         pitch = await jdAnalyzer.generateRecruiterMessage(job, { matchScore: score.quickScore }, profile);
@@ -206,7 +221,6 @@ async function runNaukriCycle() {
                                         logger.info(`✉️ Recruiter message sent for ${job.title} at ${job.company}`);
                                         await sendMessage(`✉️ Recruiter Messaged: ${job.title} at ${job.company}`).catch(() => { });
                                         memory.updateHourlyStats({ messagesToday: 1 });
-                                        // Bug 11: persist recruiter message
                                         memory.logRecruiterMessage({
                                             company: job.company, title: job.title, jobId: job.jobId,
                                             recruiterName: recruiterName, message: pitch.slice(0, 200),
@@ -217,10 +231,30 @@ async function runNaukriCycle() {
                                 } catch (msgErr) {
                                     logger.warn(`Recruiter outreach error: ${msgErr.message}`);
                                 }
-                            } // end hasMessagedRecruiter check
+                            }
                         }
                     } catch (applyErr) {
-                        logger.warn(`Apply failed: ${job.title} — ${applyErr.message}`);
+                        // BUG-1: Check if browser crashed
+                        if (applyErr.message && applyErr.message.includes('Target page, context or browser has been closed')) {
+                            logger.error(`Browser crashed during apply — forcing new browser...`);
+                            try {
+                                const freshResult = await naukriAgent.forceNewBrowser();
+                                page = freshResult.page;
+                                const loginResult = await naukriAgent.login(page);
+                                if (loginResult.success) {
+                                    naukriAgent.setLoggedIn(true);
+                                    logger.info('Browser recovered — continuing cycle');
+                                } else {
+                                    logger.error('Browser recovery failed — login unsuccessful');
+                                    break;
+                                }
+                            } catch (recoveryErr) {
+                                logger.error(`Browser recovery failed: ${recoveryErr.message}`);
+                                break;
+                            }
+                        } else {
+                            logger.warn(`Apply failed: ${job.title} — ${applyErr.message}`);
+                        }
                     }
                 } else {
                     memory.addToExternalQueue({
@@ -277,12 +311,36 @@ async function runNaukriCycle() {
             logger.debug(`Profile learning skipped: ${learnErr.message}`);
         }
     } catch (err) {
-        logger.error(`Naukri cycle error: ${err.message}`);
-        await sendAlert('Cycle Error', err.message).catch(() => { });
+        // BUG-1: Top-level browser crash recovery
+        if (err.message && err.message.includes('Target page, context or browser has been closed')) {
+            logger.error(`Browser crashed at top level — forcing new browser for next cycle`);
+            await naukriAgent.forceNewBrowser().catch(() => { });
+            await sendAlert('Browser Crashed', 'Browser died mid-cycle. Auto-recovered for next cycle.').catch(() => { });
+        } else {
+            logger.error(`Naukri cycle error: ${err.message}`);
+            await sendAlert('Cycle Error', err.message).catch(() => { });
+        }
     } finally {
         // DO NOT close the browser — keep session alive for next cycle
         isRunning = false;
     }
+}
+
+// BUG-4: Normalize jobId — extract numeric ID from URL or raw jobId
+function normalizeJobId(rawId, url) {
+    // Already a clean numeric ID
+    if (/^\d+$/.test(rawId)) return rawId;
+    // Extract from URL: .../job-title-123456?...
+    if (url) {
+        const match = url.match(/-(\d{5,})(?:\?|$)/);
+        if (match) return match[1];
+    }
+    // Extract from compound ID
+    if (rawId) {
+        const match = rawId.match(/(\d{5,})/);
+        if (match) return match[1];
+    }
+    return rawId || '';
 }
 
 // Helper to log a successful application

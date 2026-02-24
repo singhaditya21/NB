@@ -25,6 +25,8 @@ function writeJSON(name, data) {
     const tmp = fp + '.tmp';
     fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf-8');
     fs.renameSync(tmp, fp);
+    // BUG-12: Invalidate cache on write
+    _fileCache.delete(name);
 }
 
 function ensureFile(name, defaultData) {
@@ -192,9 +194,24 @@ function removeFromExternalQueue(jobId) {
     writeJSON('external-queue.json', queue);
 }
 
+// ─── BUG-12: In-memory cache for frequently read files ───
+const _fileCache = new Map();
+const CACHEABLE_FILES = new Set(['hourly-stats.json', 'budget-log.json']);
+
+function readJSONCached(name) {
+    if (CACHEABLE_FILES.has(name) && _fileCache.has(name)) {
+        return _fileCache.get(name);
+    }
+    const data = readJSON(name);
+    if (data && CACHEABLE_FILES.has(name)) {
+        _fileCache.set(name, data);
+    }
+    return data;
+}
+
 // ─── Hourly Stats ───
 function getHourlyStats() {
-    return readJSON('hourly-stats.json') || {
+    return readJSONCached('hourly-stats.json') || {
         appliedThisHour: 0, appliedToday: 0,
         messagesThisHour: 0, messagesToday: 0,
         repliesToday: 0, externalQueueCount: 0,
@@ -239,7 +256,7 @@ function resetDailyStats() {
 
 // ─── Budget Log ───
 function getBudgetLog() {
-    return readJSON('budget-log.json') || {
+    return readJSONCached('budget-log.json') || {
         date: new Date().toISOString().slice(0, 10),
         callsByModel: { FREE: 0, CHEAP: 0, BALANCED: 0 },
         estimatedCostToday: 0.00,
@@ -251,6 +268,22 @@ function getBudgetLog() {
     };
 }
 function saveBudgetLog(data) { writeJSON('budget-log.json', data); }
+
+// ─── BUG-7: Recalculate daily stats from applied-jobs.json on startup ───
+function recalculateDailyStats() {
+    const today = new Date().toISOString().slice(0, 10);
+    const allApplied = getAppliedJobs();
+    const todayApplied = allApplied.filter(j => j.appliedAt && j.appliedAt.startsWith(today));
+    const stats = getHourlyStats();
+    const oldCount = stats.appliedToday;
+    stats.appliedToday = todayApplied.length;
+    stats.lastUpdated = new Date().toISOString();
+    writeJSON('hourly-stats.json', stats);
+    if (oldCount !== todayApplied.length) {
+        logger.info(`Recalculated appliedToday: ${oldCount} → ${todayApplied.length}`);
+    }
+    return stats;
+}
 
 // ─── Blocklist ───
 function isCompanyBlocked(company) {
@@ -275,6 +308,7 @@ module.exports = {
     logRecruiterMessage, hasMessagedRecruiter, getRecruiterMessages,
     getExternalQueue, addToExternalQueue, removeFromExternalQueue,
     getHourlyStats, updateHourlyStats, resetHourlyStats, resetDailyStats,
+    recalculateDailyStats,
     getBudgetLog, saveBudgetLog,
     isCompanyBlocked, addToBlocklist,
 };

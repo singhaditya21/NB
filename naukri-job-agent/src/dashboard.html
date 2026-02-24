@@ -581,6 +581,80 @@
     .btn.red:hover {
       background: #FEF2F2;
     }
+
+    /* Session Status Bar */
+    .session-bar {
+      display: flex;
+      gap: 16px;
+      padding: 8px 32px;
+      background: #F8FAFC;
+      border-bottom: 1px solid #E2E8F0;
+      font-size: 12px;
+      font-weight: 500;
+      flex-shrink: 0;
+    }
+
+    .session-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #64748B;
+    }
+
+    .session-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .session-dot.ok {
+      background: #16A34A;
+    }
+
+    .session-dot.warn {
+      background: #D97706;
+    }
+
+    .session-dot.bad {
+      background: #DC2626;
+    }
+
+    /* Mobile responsive */
+    @media (max-width: 768px) {
+      .hdr {
+        padding: 10px 16px;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .kpi-row {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .ov-content {
+        grid-template-columns: 1fr;
+      }
+
+      .pane {
+        padding: 16px;
+      }
+
+      .tabs {
+        padding: 0 16px;
+        overflow-x: auto;
+      }
+
+      .ctrl {
+        padding: 8px 16px;
+        flex-wrap: wrap;
+      }
+
+      .session-bar {
+        padding: 8px 16px;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+    }
   </style>
 </head>
 
@@ -601,6 +675,25 @@
         <button class="dp" data-r="week">Week</button>
         <button class="dp" data-r="all">All</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Session Status Bar -->
+  <div class="session-bar" id="session-bar">
+    <div class="session-item">
+      <div class="session-dot bad" id="sd-browser"></div>
+      <span id="st-browser">Browser: checking...</span>
+    </div>
+    <div class="session-item">
+      <div class="session-dot bad" id="sd-login"></div>
+      <span id="st-login">Login: checking...</span>
+    </div>
+    <div class="session-item">
+      <div class="session-dot warn" id="sd-agent"></div>
+      <span id="st-agent">Agent: checking...</span>
+    </div>
+    <div class="session-item" style="margin-left:auto;">
+      <span id="st-uptime2" style="color:#94A3B8;">Uptime: —</span>
     </div>
   </div>
 
@@ -925,6 +1018,44 @@
     async function ctl(a) { if (a === 'stop' && !confirm('Emergency stop?')) return; try { await fetch(`/api/control?action=${a}`) } catch { } }
 
     ws(); loadAll(); setInterval(loadAll, 8000);
+
+    // Session status polling
+    async function loadSession() {
+      try {
+        const r = await fetch('/api/session');
+        const s = await r.json();
+        // Browser
+        const sdB = document.getElementById('sd-browser');
+        const stB = document.getElementById('st-browser');
+        sdB.className = `session-dot ${s.browserAlive ? 'ok' : 'bad'}`;
+        stB.textContent = `Browser: ${s.browserAlive ? 'Alive' : 'Dead'}`;
+        // Login
+        const sdL = document.getElementById('sd-login');
+        const stL = document.getElementById('st-login');
+        sdL.className = `session-dot ${s.loggedIn ? 'ok' : 'warn'}`;
+        stL.textContent = `Login: ${s.loggedIn ? 'Active' : 'Not logged in'}`;
+        // Agent state
+        const sdA = document.getElementById('sd-agent');
+        const stA = document.getElementById('st-agent');
+        if (s.emergencyStop) {
+          sdA.className = 'session-dot bad';
+          stA.textContent = 'Agent: STOPPED';
+        } else if (s.isPaused) {
+          sdA.className = 'session-dot warn';
+          stA.textContent = 'Agent: Paused';
+        } else if (s.isRunning) {
+          sdA.className = 'session-dot ok';
+          stA.textContent = 'Agent: Running cycle...';
+        } else {
+          sdA.className = 'session-dot ok';
+          stA.textContent = 'Agent: Ready';
+        }
+        // Uptime
+        const m = Math.floor(s.uptime / 60), h = Math.floor(m / 60);
+        document.getElementById('st-uptime2').textContent = `Uptime: ${h > 0 ? h + 'h ' : ''}${m % 60}m`;
+      } catch { }
+    }
+    loadSession(); setInterval(loadSession, 15000);
   </script>
 </body>
 

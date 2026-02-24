@@ -32,7 +32,7 @@ function filterByDate(jobs, range) {
 }
 
 function startDashboard() {
-    const server = http.createServer((req, res) => {
+    const server = http.createServer(async (req, res) => {
         res.setHeader('Access-Control-Allow-Origin', '*');
         const parsed = url.parse(req.url, true);
         const pathname = parsed.pathname;
@@ -210,6 +210,27 @@ function startDashboard() {
                 }
                 return;
             }
+        }
+
+        // Session status endpoint — browser alive, login state, last cycle
+        if (pathname === '/api/session') {
+            const naukriAgent = require('./naukri-agent');
+            const orchestrator = require('./orchestrator');
+            const state = orchestrator.getState();
+            let browserAlive = false;
+            try {
+                browserAlive = await naukriAgent.isBrowserAlive();
+            } catch { }
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+                browserAlive,
+                loggedIn: naukriAgent.isLoggedIn(),
+                isPaused: state.isPaused,
+                isRunning: state.isRunning,
+                emergencyStop: state.emergencyStop,
+                uptime: Math.floor(process.uptime()),
+            }));
+            return;
         }
 
         res.writeHead(404);
