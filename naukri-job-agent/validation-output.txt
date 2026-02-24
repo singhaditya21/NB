@@ -1,0 +1,76 @@
+﻿
+ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+  GEMINI API VALIDATION ÔÇö All Use Cases
+ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+
+  API Key: AIzaSyBP9q...CEfI
+  Model: gemini-2.5-flash
+
+­ƒôí Test 1: Basic Connectivity
+  Ô£à Basic API Call ÔÇö 1847ms | in=9 out=3 | $0.00000 | API connected successfully...
+
+­ƒôï Test 2: JD Screening (JSON)
+  Ô£à JD Screening ÔÇö 5555ms | in=179 out=47 | $0.00004 | {"worthAnalyzing": true, "quickScore": 92, "reason": "Excellent match on role (VP Ops), experience (15+ years), global o...
+
+­ƒöì Test 3: Full JD Analysis (JSON)
+  Ô£à Full JD Analysis ÔÇö 7791ms | in=137 out=176 | $0.00008 | ```json {   "matchScore": 78,   "requiredSkills": ["operations", "delivery management", "revenue operations", "customer ...
+
+­ƒôØ Test 4: Cover Letter Generation
+  Ô£à Cover Letter ÔÇö 3405ms | in=86 out=157 | $0.00007 | Dear Hiring Manager,  I am writing to express my strong interest in the VP Operations position at TechCorp. With over 15...
+
+Ô£ë´©Å Test 5: Recruiter Message
+  Ô£à Recruiter Message ÔÇö 5213ms | in=39 out=56 | $0.00003 | Hi [Recruiter Name],  Aditya Singh here, applying for VP Operations at TechCorp. I recently led a supply chain overhaul ...
+
+­ƒôº Test 6: Contact Extraction (JSON)
+  Ô£à Contact Extraction ÔÇö 2597ms | in=102 out=62 | $0.00004 | ```json {   "emails": ["jobs@techcorp.com"],   "phones": ["9876543210"],   "linkedinUrls": ["linkedin.com/in/recruiter"]...
+
+­ƒôè Test 7: Resume Feedback (JSON)
+  Ô£à Resume Feedback ÔÇö 4513ms | in=98 out=91 | $0.00005 | ```json {   "profileKeywords": [     "P&L management",     "delivery governance",     "sprint planning",     "global ope...
+
+­ƒô¼ Test 8: Follow-up Draft
+  Ô£à Follow-up Message ÔÇö 2897ms | in=39 out=43 | $0.00002 | Dear Aditya, Thank you for your application for the VP Operations position at TechCorp, which we received two days ago. ...
+
+­ƒÄô Test 9: Profile Learning (JSON)
+  Ô£à Profile Learning ÔÇö 14244ms | in=69 out=48 | $0.00003 | ```json {   "newSkills": [     "data governance",     "cloud migration"   ],   "newRoles": [     "Head of Platform Opera...
+
+­ƒÆí Test 10: Hourly Insight
+  Ô£à Hourly Insight ÔÇö 7133ms | in=37 out=39 | $0.00002 | To improve your 1-in-5 reply rate, critically review your message content and refine your application strategy to ensure...
+
+ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+  RESULTS SUMMARY
+ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+
+  Tests: 10/10 passed, 0 failed
+  JSON Parse: 5/5 valid
+  Total tokens: 795 in + 722 out
+  Validation cost: $0.0004
+
+ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+  MONTHLY BUDGET PROJECTION ($20 limit)
+ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+
+  Avg cost/call: $0.00004
+  Est. daily calls: 164 (50 jobs ├ù 2.3 calls + 49 overhead)
+  Est. daily cost: $0.01
+  Est. monthly cost: $0.18
+  Budget limit: $20.00
+  Budget headroom: $19.82
+
+  Ô£à WELL WITHIN BUDGET ÔÇö all features safe to run
+
+ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+  BUDGET SAFETY LAYERS
+ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+
+  Layer 1: BudgetGuardian tracks every call's token usage + cost
+  Layer 2: Warning at $15/month ÔåÆ Telegram alert
+  Layer 3: Auto-switch to cheapest model at $18/month
+  Layer 4: HARD STOP at $20/month ÔåÆ zero API calls until next month
+  Layer 5: Rate limiter caps at 5,000 calls/day
+  Layer 6: 10-min cooldown on 429 errors (auto-recovery)
+  Layer 7: Google Cloud budget alert (set independently)
+
+ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+  ­ƒÄë ALL TESTS PASSED ÔÇö Gemini is fully operational!
+ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
+

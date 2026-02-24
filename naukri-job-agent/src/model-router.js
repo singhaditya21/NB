@@ -2,16 +2,16 @@
 const { logger } = require('./logger');
 
 const MODEL_REGISTRY = {
-    // ─── ALL models route to gemini-2.0-flash (FREE TIER ONLY) ───
+    // ─── ALL models route to gemini-2.5-flash (FREE TIER ONLY) ───
     // Free tier: 15 RPM, 1,500 RPD, 1M TPM — $0.00/month
     models: {
-        FREE: 'gemini-2.0-flash',
-        CHEAP: 'gemini-2.0-flash',
-        BALANCED: 'gemini-2.0-flash',  // Was gemini-2.5-flash — changed to stay free
+        FREE: 'gemini-2.5-flash',
+        CHEAP: 'gemini-2.5-flash',
+        BALANCED: 'gemini-2.5-flash',  // Was gemini-2.5-flash — changed to stay free
     },
 
     taskRouting: {
-        // All tasks use gemini-2.0-flash via their tier routing
+        // All tasks use gemini-2.5-flash via their tier routing
         company_research: { model: 'FREE', mode: 'batch', reason: 'free tier' },
         jd_screening: { model: 'FREE', mode: 'batch', reason: 'free tier' },
         keyword_extraction: { model: 'FREE', mode: 'batch', reason: 'free tier' },
