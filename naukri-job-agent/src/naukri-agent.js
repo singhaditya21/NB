@@ -99,7 +99,7 @@ async function createBrowser() {
     });
 
     _context = await _browser.newContext({
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
         viewport: { width: 1366, height: 768 },
         locale: 'en-IN',
         timezoneId: 'Asia/Kolkata',
@@ -260,8 +260,11 @@ async function searchJobs(page, searchConfig) {
                         const salaryEl = el.querySelector('.sal-wrap span, .sal, [class*="sal"]');
                         const locEl = el.querySelector('.loc-wrap span, .locWdth, .loc');
                         const snippetEl = el.querySelector('.job-desc, .row3, .ellipsis');
-                        const href = titleEl ? titleEl.getAttribute('href') : '';
-                        const jobId = el.getAttribute('data-job-id') || (href && href.match(/-(\d+)(?:\?|$)/)?.[1]) || '';
+                        // Bug 6: detect external apply
+                        const applyEl = el.querySelector('#apply-button, [id*="apply-button"]');
+                        const applyText = applyEl ? applyEl.textContent.trim().toLowerCase() : '';
+                        const isEasyApply = !applyText.includes('company site') && !applyText.includes('external');
+                        const snippetText = snippetEl ? snippetEl.textContent.trim() : '';
 
                         return {
                             jobId: jobId,
@@ -269,9 +272,9 @@ async function searchJobs(page, searchConfig) {
                             company: companyEl ? companyEl.textContent.trim() : '',
                             salary: salaryEl ? salaryEl.textContent.trim() : '',
                             location: locEl ? locEl.textContent.trim() : '',
-                            jdSnippet: snippetEl ? snippetEl.textContent.trim() : '',
+                            jdSnippet: snippetText,
                             url: href ? (href.startsWith('http') ? href : `https://www.naukri.com${href}`) : '',
-                            isEasyApply: true,
+                            isEasyApply: isEasyApply,
                         };
                     });
 
@@ -387,11 +390,25 @@ async function applyEasyApply(page, jobUrl, profile) {
             }
         }
 
-        // Save debug screenshot after Apply click
+        // Save debug screenshot after Apply click (Bug 7: with cleanup)
         try {
             const ts = Date.now();
-            await page.screenshot({ path: `memory/debug-apply-${ts}.png`, fullPage: false });
+            const screenshotPath = `memory/debug-apply-${ts}.png`;
+            await page.screenshot({ path: screenshotPath, fullPage: false });
             logger.info(`Debug screenshot saved: debug-apply-${ts}.png`);
+            // Bug 7: clean up old screenshots, keep only last 20
+            try {
+                const fs = require('fs');
+                const debugFiles = fs.readdirSync('memory')
+                    .filter(f => f.startsWith('debug-apply-') && f.endsWith('.png'))
+                    .sort();
+                if (debugFiles.length > 20) {
+                    for (const old of debugFiles.slice(0, debugFiles.length - 20)) {
+                        fs.unlinkSync(`memory/${old}`);
+                    }
+                    logger.debug(`Cleaned up ${debugFiles.length - 20} old debug screenshots`);
+                }
+            } catch { }
         } catch { }
 
         // ─── Handle Naukri chatbot apply flow ───
@@ -593,7 +610,7 @@ async function sendRecruiterMessage(page, recruiterName, messageText) {
 }
 
 // ─── Profile Refresh (resume upload + headline edit) ───
-const RESUME_PATH = 'D:\\NB\\Aditya_Singh_Resume.pdf';
+const RESUME_PATH = process.env.RESUME_PATH || 'D:\\NB\\Aditya_Singh_Resume.pdf';
 
 async function refreshProfileTimestamp(page) {
     const result = { resumeUploaded: false, headlineUpdated: false };

@@ -137,8 +137,9 @@ function setupCronJobs() {
         }
     }, { timezone: 'Asia/Kolkata' });
 
-    // Every 5 minutes — status report to Telegram
-    cron.schedule('*/5 * * * *', () => {
+    // Every 5 minutes (offset by 2 min from cycle) — status report to Telegram
+    // Bug 3: offset by 2 min so it doesn't collide with runNaukriCycle at :00/:05/:10
+    cron.schedule('2-57/5 * * * *', () => {
         logger.info('CRON: 5-minute status report');
         orchestrator.runHourlyReport().catch(err => {
             logger.error(`CRON status report error: ${err.message}`);

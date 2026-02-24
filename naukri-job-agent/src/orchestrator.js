@@ -44,6 +44,7 @@ async function runNaukriCycle() {
     let page;
     let cycleApplied = 0;
     let cycleSkipped = 0;
+    const appliedThisCycle = new Set(); // Bug 5: prevent duplicate applies within same cycle
 
     try {
         const result = await naukriAgent.createBrowser();
@@ -54,6 +55,8 @@ async function runNaukriCycle() {
             const loginResult = await naukriAgent.login(page);
             if (!loginResult.success) {
                 await sendAlert('Login Failed', `Reason: ${loginResult.reason}. Retrying next cycle.`);
+                // Bug 4: DON'T return here — fall through to finally so isRunning resets
+                isRunning = false;
                 return;
             }
             naukriAgent.setLoggedIn(true);
@@ -78,7 +81,7 @@ async function runNaukriCycle() {
                 experienceMax: 20,
                 location: 'Delhi NCR',
                 postedWithin: '7',
-                maxPages: 1,
+                maxPages: 2,
             });
 
             if (jobs.length === 0) {
@@ -89,6 +92,7 @@ async function runNaukriCycle() {
             // Filter already applied + blocklisted
             const newJobs = jobs.filter(j => {
                 if (memory.hasApplied(j.jobId)) return false;
+                if (appliedThisCycle.has(j.jobId)) return false; // Bug 5: skip if applied earlier in this cycle
                 if (memory.isCompanyBlocked(j.company)) return false;
                 return true;
             });
@@ -134,26 +138,23 @@ async function runNaukriCycle() {
 
                         if (applyResult.success) {
                             cycleApplied++;
+                            appliedThisCycle.add(job.jobId); // Bug 5: mark applied in this cycle
                             logSuccessfulApply(job, score);
                             queueJDForFeedback(job);
 
-                            // ─── Navigate to job page to extract full JD + recruiter msg ───
-                            let fullJDText = job.jdSnippet || '';
+                            // ─── Use getJDText for full JD extraction (Bug 8) ───
+                            let jdText = job.jdSnippet || `${job.title} at ${job.company}`;
+                            let recruiterName = '';
                             try {
-                                await page.goto(job.url, { waitUntil: 'domcontentloaded', timeout: 20000 });
-                                await randomDelay(1500, 2500);
-                                // Extract full JD text from the page
-                                fullJDText = await page.evaluate(() => {
-                                    const el = document.querySelector('div[class*="dang-inner-html"], .job-desc .dang-inner-html, section[class*="job-desc-container"]');
-                                    return el ? el.innerText.trim() : '';
-                                }).catch(() => '');
-                                if (fullJDText.length > 50) {
-                                    logger.info(`📄 Full JD extracted: ${fullJDText.length} chars for ${job.company}`);
+                                const jdData = await naukriAgent.getJDText(page, job.url);
+                                if (jdData && jdData.jdText && jdData.jdText.length > 50) {
+                                    jdText = jdData.jdText;
+                                    recruiterName = jdData.recruiterName || '';
+                                    logger.info(`📄 Full JD extracted: ${jdText.length} chars for ${job.company}`);
                                 }
-                            } catch (navErr) {
-                                logger.warn(`Could not navigate to JD page: ${navErr.message}`);
+                            } catch (jdErr) {
+                                logger.warn(`JD extraction failed: ${jdErr.message}`);
                             }
-                            const jdText = fullJDText.length > 50 ? fullJDText : (job.jdSnippet || `${job.title} at ${job.company}`);
 
                             // ─── Contact extraction on ALL applied jobs (uses full JD text) ───
                             try {
@@ -196,11 +197,16 @@ async function runNaukriCycle() {
                                     pitch = `Hi, I'm ${profile.name} with ${profile.totalExperience} experience. I just applied for the ${job.title} role — my background in scaling enterprise operations aligns well. Would love to connect.`;
                                 }
 
-                                const msgResult = await naukriAgent.sendRecruiterMessage(page, '', pitch);
+                                const msgResult = await naukriAgent.sendRecruiterMessage(page, recruiterName, pitch);
                                 if (msgResult.success) {
                                     logger.info(`✉️ Recruiter message sent for ${job.title} at ${job.company}`);
                                     await sendMessage(`✉️ Recruiter Messaged: ${job.title} at ${job.company}`).catch(() => { });
                                     memory.updateHourlyStats({ messagesToday: 1 });
+                                    // Bug 11: persist recruiter message
+                                    memory.logRecruiterMessage({
+                                        company: job.company, title: job.title, jobId: job.jobId,
+                                        recruiterName: recruiterName, message: pitch.slice(0, 200),
+                                    });
                                 } else {
                                     logger.warn(`Recruiter msg not available: ${msgResult.reason} (${job.company})`);
                                 }
@@ -390,13 +396,16 @@ async function runFollowUpCycle() {
 async function runStatusCheck() {
     if (isPaused || emergencyStop || isRunning) return;
 
-    let page;
     try {
         const result = await naukriAgent.createBrowser();
-        page = result.page;
+        const page = result.page;
 
-        const loginResult = await naukriAgent.login(page);
-        if (!loginResult.success) return;
+        // Reuse existing login — don't re-login (Bug 1: would force new session)
+        if (!naukriAgent.isLoggedIn()) {
+            const loginResult = await naukriAgent.login(page);
+            if (!loginResult.success) return;
+            naukriAgent.setLoggedIn(true);
+        }
 
         const statuses = await naukriAgent.checkApplicationStatus(page);
 
@@ -415,30 +424,31 @@ async function runStatusCheck() {
         }
     } catch (err) {
         logger.error(`Status check error: ${err.message}`);
-    } finally {
-        await naukriAgent.closeBrowser();
     }
+    // Bug 1: DO NOT close browser — it's shared with runNaukriCycle
 }
 
 // ─── 4. runProfileRefresh ───
 async function runProfileRefresh() {
     if (isPaused || emergencyStop || isRunning) return;
 
-    let page;
     try {
         const result = await naukriAgent.createBrowser();
-        page = result.page;
+        const page = result.page;
 
-        const loginResult = await naukriAgent.login(page);
-        if (!loginResult.success) return;
+        // Reuse existing login (Bug 1: don't destroy shared session)
+        if (!naukriAgent.isLoggedIn()) {
+            const loginResult = await naukriAgent.login(page);
+            if (!loginResult.success) return;
+            naukriAgent.setLoggedIn(true);
+        }
 
         await naukriAgent.refreshProfileTimestamp(page);
         logger.info('Daily profile refresh completed');
     } catch (err) {
         logger.error(`Profile refresh error: ${err.message}`);
-    } finally {
-        await naukriAgent.closeBrowser();
     }
+    // Bug 1: DO NOT close browser — it's shared with runNaukriCycle
 }
 
 // ─── 5. generateHourlyInsight ───
